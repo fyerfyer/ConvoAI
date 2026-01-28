@@ -54,6 +54,8 @@ export class ChannelService {
       const parentObjectId = new Types.ObjectId(createChannelDTO.parentId);
       const parent = await this.channelModel
         .findById(parentObjectId)
+        .select('guild type permissionOverwrites')
+        .lean()
         .session(session);
       if (!parent || !parent.guild.equals(guildObjectId)) {
         throw new BadRequestException('Invalid parent channel');
@@ -123,6 +125,7 @@ export class ChannelService {
       channel.guild.toString(),
       userId,
     );
+
     if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
       throw new ForbiddenException(
         'You do not have permission to update channels',
@@ -139,6 +142,8 @@ export class ChannelService {
       const parentObjectId = new Types.ObjectId(updateChannelDTO.parentId);
       const parent = await this.channelModel
         .findById(parentObjectId)
+        .select('guild')
+        .lean()
         .session(session);
       if (!parent || !parent.guild.equals(channel.guild)) {
         throw new BadRequestException('Invalid parent channel');
@@ -221,6 +226,13 @@ export class ChannelService {
       channel.permissionOverwrites.push(permissionOverwriteDTO);
     }
 
-    return channel.save({ session });
+    await channel.save({ session });
+
+    // 修改 Channel 权限覆写，升级整个 Guild 的权限版本号
+    await this.memberService.invalidateGuildPermissions(
+      channel.guild.toString(),
+    );
+
+    return channel;
   }
 }

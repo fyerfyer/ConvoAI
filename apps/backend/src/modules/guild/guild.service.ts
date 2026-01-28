@@ -119,7 +119,10 @@ export class GuildService {
     updateData: UpdateRoleDTO,
     session?: ClientSession,
   ): Promise<GuildDocument> {
-    const guild = await this.guildModel.findById(guildId).session(session);
+    const guild = await this.guildModel
+      .findById(guildId)
+      .select('roles owner')
+      .session(session);
     if (!guild) {
       throw new NotFoundException('Guild not found');
     }
@@ -156,6 +159,10 @@ export class GuildService {
       role.mentionable = updateData.mentionable;
 
     await guild.save({ session });
+
+    // 修改 Role 权限，升级整个 Guild 的权限版本号，废弃所有旧缓存
+    await this.memberService.invalidateGuildPermissions(guildId);
+
     return guild;
   }
 
@@ -164,7 +171,10 @@ export class GuildService {
     roleId: string,
     session?: ClientSession,
   ): Promise<GuildDocument> {
-    const guild = await this.guildModel.findById(guildId).session(session);
+    const guild = await this.guildModel
+      .findById(guildId)
+      .select('roles')
+      .session(session);
     if (!guild) {
       throw new NotFoundException('Guild not found');
     }
@@ -191,6 +201,10 @@ export class GuildService {
       .session(session);
 
     await guild.save({ session });
+
+    // 删除 Role，升级整个 Guild 的权限版本号
+    await this.memberService.invalidateGuildPermissions(guildId);
+
     return guild;
   }
 
@@ -201,7 +215,10 @@ export class GuildService {
     const guildObjectId = new Types.ObjectId(guildId);
     const userObjectId = new Types.ObjectId(userId);
 
-    const guild = await this.guildModel.findById(guildObjectId);
+    const guild = await this.guildModel
+      .findById(guildObjectId)
+      .select('roles owner')
+      .lean();
     if (!guild) {
       throw new NotFoundException('Guild not found');
     }
@@ -210,10 +227,13 @@ export class GuildService {
       return Number.MAX_SAFE_INTEGER;
     }
 
-    const member = await this.memberModel.findOne({
-      guild: guildObjectId,
-      user: userObjectId,
-    });
+    const member = await this.memberModel
+      .findOne({
+        guild: guildObjectId,
+        user: userObjectId,
+      })
+      .select('roles')
+      .lean();
 
     if (!member || member.roles.length === 0) {
       return 0;
