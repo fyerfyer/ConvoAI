@@ -9,6 +9,7 @@ import { MemberModule } from './modules/member/member.module';
 import { GuildModule } from './modules/guild/guild.module';
 import { S3Module } from './common/configs/s3/s3.module';
 import { ChannelModule } from './modules/channel/channel.module';
+import { GatewayModule } from './modules/gateway/gateway.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ChannelModule } from './modules/channel/channel.module';
     ChatModule,
     S3Module,
     ChannelModule,
+    GatewayModule,
   ],
 })
 export class AppModule {}

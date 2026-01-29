@@ -22,9 +22,15 @@ export class RedisKeys {
   ): string {
     return `permissions:${guildId}:${version}:${userId}:*`;
   }
+
+  static userSocket(userId: string): string {
+    return `user_socket:${userId}`;
+  }
 }
 
 export const CACHE_TTL = {
   // 权限缓存
   PERMISSIONS: 300,
+  // ws 缓存
+  USER_SOCKET: 86400,
 } as const;
