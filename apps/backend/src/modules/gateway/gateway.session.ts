@@ -16,11 +16,19 @@ export class GatewaySessionManager {
 
     // 设置过期时间，使用heartbeat机制刷新
     await this.redisClient.expire(key, CACHE_TTL.USER_SOCKET);
+
+    await this.redisClient.sadd(RedisKeys.globalOnlineUser(), userId);
   }
 
   async removeUserSocket(userId: string, socketId: string) {
     const key = RedisKeys.userSocket(userId);
     await this.redisClient.srem(key, socketId);
+
+    // 检查是否还有其他连接
+    const remaining = await this.redisClient.scard(key);
+    if (remaining === 0) {
+      await this.redisClient.srem(RedisKeys.globalOnlineUser(), userId);
+    }
   }
 
   async refreshUserSocketTTL(userId: string) {
@@ -29,9 +37,9 @@ export class GatewaySessionManager {
     await this.redisClient.expire(key, CACHE_TTL.USER_SOCKET);
   }
 
-  // 获取所有在线用户（慎用，仅用于统计等）
+  // 获取所有在线用户
+  // 优化：维护一个 online_user 集合
   async getOnlineUsers() {
-    const keys = await this.redisClient.keys(RedisKeys.userSocket('*'));
-    return keys.map((key) => key.split(':')[1]);
+    return this.redisClient.smembers(RedisKeys.globalOnlineUser());
   }
 }

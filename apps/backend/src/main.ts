@@ -16,6 +16,7 @@ async function bootstrap() {
   // Redis Adapter
   const configService = app.get(ConfigService);
   const redisIoAdapter = new RedisIOAdapter(app, configService);
+  await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
   const globalPrefix = 'api';

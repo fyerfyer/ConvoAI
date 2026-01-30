@@ -10,15 +10,25 @@ import {
 import { Server, Socket } from 'socket.io';
 import { GatewaySessionManager } from './gateway.session';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
-import { JwtPayload } from '@discord-platform/shared';
+import {
+  CreateMessageDTO,
+  JwtPayload,
+  MESSAGE_EVENT,
+  SOCKET_EVENT,
+} from '@discord-platform/shared';
 import { SocketKeys } from '../../common/constants/socket-keys.constant';
 import {
+  ForbiddenException,
   UseFilters,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { GlobalExceptionFilter } from '../../common/filters/global.filter';
+import { ChatService } from '../chat/chat.service';
+import { OnEvent } from '@nestjs/event-emitter';
+import { MessageDocument } from '../chat/schemas/message.schema';
+import { ChannelService } from '../channel/channel.service';
 
 @WebSocketGateway({
   cors: {
@@ -35,6 +45,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly sessionManager: GatewaySessionManager,
     private readonly wsJwtGuard: WsJwtGuard,
+    private readonly chatService: ChatService,
+    private readonly channelService: ChannelService,
   ) {}
 
   // 在 Connection 阶段，Guard 还没有被触发，需要手动注入
@@ -67,36 +79,81 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @UseGuards(WsJwtGuard)
-  @SubscribeMessage('joinRoom')
+  @SubscribeMessage(SOCKET_EVENT.JOIN_ROOM)
   async handleJoinRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() roomId: string,
   ) {
+    const canAccess = await this.channelService.checkAccess(
+      client.data.user.sub,
+      roomId,
+    );
+    if (!canAccess) {
+      throw new ForbiddenException(
+        'You do not have permission to join this room',
+      );
+    }
     await client.join(roomId);
     return {
-      event: 'joinedRoom',
+      event: SOCKET_EVENT.JOIN_ROOM,
       data: roomId,
     };
   }
 
   @UseGuards(WsJwtGuard)
-  @SubscribeMessage('leaveRoom')
+  @SubscribeMessage(SOCKET_EVENT.LEAVE_ROOM)
   async handleLeaveRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() roomId: string,
   ) {
     await client.leave(roomId);
     return {
-      event: 'leftRoom',
+      event: SOCKET_EVENT.LEAVE_ROOM,
       data: roomId,
     };
   }
 
   @UseGuards(WsJwtGuard)
-  @SubscribeMessage('heartbeat')
+  @SubscribeMessage(SOCKET_EVENT.HEARTBEAT)
   async handleHeartbeat(@ConnectedSocket() client: Socket) {
     const user: JwtPayload = client.data.user;
     await this.sessionManager.refreshUserSocketTTL(user.sub);
     return { status: 'ok' };
+  }
+
+  // 这里只负责消息的创建，不负责消息的广播
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage(SOCKET_EVENT.SEND_MESSAGE)
+  async handleSendMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: CreateMessageDTO,
+  ) {
+    const user: JwtPayload = client.data.user;
+    await this.chatService.createMessage(user.sub, payload);
+    return { status: 'sent', data: { tempId: payload.nonce } };
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage(SOCKET_EVENT.TYPING)
+  async handleTyping(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channelId: string; isTyping: boolean },
+  ) {
+    const { channelId, isTyping } = payload;
+    const user: JwtPayload = client.data.user;
+    client.to(channelId).emit(SOCKET_EVENT.TYPING, {
+      userId: user.sub,
+      channelId,
+      isTyping,
+    });
+  }
+
+  // 监听全局消息事件
+  @OnEvent(MESSAGE_EVENT.CREATE_MESSAGE)
+  handleMessageCreated(message: MessageDocument) {
+    const roomId = message.channelId.toString();
+
+    // 向房间内所有用户广播消息
+    this.server.to(roomId).emit(SOCKET_EVENT.NEW_MESSAGE, message);
   }
 }

@@ -10,9 +10,11 @@ import { GuildModule } from './modules/guild/guild.module';
 import { S3Module } from './common/configs/s3/s3.module';
 import { ChannelModule } from './modules/channel/channel.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
+    EventEmitterModule.forRoot(),
     ConfigModule,
     LoggerModule,
     AuthModule,

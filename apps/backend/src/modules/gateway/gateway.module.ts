@@ -6,6 +6,7 @@ import { StringValue } from 'ms';
 import { ChatGateway } from './gateway';
 import { GatewaySessionManager } from './gateway.session';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { WsJwtGuard } from './guards/ws-jwt.guard';
         signOptions: { expiresIn: appConf.jwtExpire as StringValue },
       }),
     }),
+    ChatModule,
   ],
 
   providers: [ChatGateway, GatewaySessionManager, WsJwtGuard],

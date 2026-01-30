@@ -14,3 +14,6 @@ export * from './utils/permission.util';
 export * from './constants/role.contant';
 export * from './dtos/channel.dto';
 export * from './dtos/user.dto';
+export * from './dtos/chat.dto';
+export * from './constants/event.constant';
+export * from './constants/socket.constant';

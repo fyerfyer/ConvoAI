@@ -235,4 +235,16 @@ export class ChannelService {
 
     return channel;
   }
+
+  async checkAccess(userId: string, channelId: string): Promise<boolean> {
+    const channel = await this.channelModel.findById(channelId);
+    if (channel) return false;
+
+    const permissions = await this.memberService.getMemberPermissions(
+      channel.guild.toString(),
+      userId,
+      channelId,
+    );
+    return PermissionUtil.has(permissions, PERMISSIONS.VIEW_CHANNELS);
+  }
 }

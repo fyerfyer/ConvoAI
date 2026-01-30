@@ -26,6 +26,10 @@ export class RedisKeys {
   static userSocket(userId: string): string {
     return `user_socket:${userId}`;
   }
+
+  static globalOnlineUser(): string {
+    return 'global_online_users';
+  }
 }
 
 export const CACHE_TTL = {
