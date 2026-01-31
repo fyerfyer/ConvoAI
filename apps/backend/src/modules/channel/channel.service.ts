@@ -238,7 +238,7 @@ export class ChannelService {
 
   async checkAccess(userId: string, channelId: string): Promise<boolean> {
     const channel = await this.channelModel.findById(channelId);
-    if (channel) return false;
+    if (!channel) return false;
 
     const permissions = await this.memberService.getMemberPermissions(
       channel.guild.toString(),

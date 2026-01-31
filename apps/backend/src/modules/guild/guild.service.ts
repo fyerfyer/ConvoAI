@@ -11,6 +11,7 @@ import { Role } from './schemas/role.schema';
 import { MemberService } from '../member/member.service';
 import {
   CHANNEL,
+  CHANNEL_NAME,
   CreateRoleDTO,
   UpdateRoleDTO,
 } from '@discord-platform/shared';
@@ -43,7 +44,7 @@ export class GuildService {
         guild._id.toString(),
         ownerId,
         {
-          name: 'general',
+          name: CHANNEL_NAME.GENERAL,
           type: CHANNEL.GUILD_TEXT,
         },
         session,

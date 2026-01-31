@@ -6,3 +6,7 @@ export const CHANNEL = {
 
 export type ChannelKey = keyof typeof CHANNEL;
 export type ChannelValue = (typeof CHANNEL)[ChannelKey];
+
+export const CHANNEL_NAME = {
+  GENERAL: 'general',
+} as const;

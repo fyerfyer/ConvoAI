@@ -18,3 +18,13 @@ export const createMessageDTOSchema = z.object({
 });
 
 export type CreateMessageDTO = z.infer<typeof createMessageDTOSchema>;
+
+export const attachmentPresignedUrlDTOSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentType: z.string().min(1),
+  size: z.number().nonnegative(),
+});
+
+export type AttachmentPresignedUrlDTO = z.infer<
+  typeof attachmentPresignedUrlDTOSchema
+>;

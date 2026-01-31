@@ -12,20 +12,31 @@ export class GatewaySessionManager {
 
   async setUserSocket(userId: string, socketId: string) {
     const key = RedisKeys.userSocket(userId);
-    await this.redisClient.sadd(key, socketId);
+
+    const pipeline = this.redisClient.pipeline();
+    pipeline.sadd(key, socketId);
 
     // 设置过期时间，使用heartbeat机制刷新
-    await this.redisClient.expire(key, CACHE_TTL.USER_SOCKET);
+    pipeline.expire(key, CACHE_TTL.USER_SOCKET);
 
-    await this.redisClient.sadd(RedisKeys.globalOnlineUser(), userId);
+    pipeline.sadd(RedisKeys.globalOnlineUser(), userId);
+
+    await pipeline.exec();
   }
 
   async removeUserSocket(userId: string, socketId: string) {
     const key = RedisKeys.userSocket(userId);
-    await this.redisClient.srem(key, socketId);
+
+    const pipeline = this.redisClient.pipeline();
+    pipeline.srem(key, socketId);
 
     // 检查是否还有其他连接
-    const remaining = await this.redisClient.scard(key);
+    pipeline.scard(key);
+
+    const results = await pipeline.exec();
+
+    // 检查是否还有其他连接
+    const remaining = results?.[1][1] as number;
     if (remaining === 0) {
       await this.redisClient.srem(RedisKeys.globalOnlineUser(), userId);
     }
