@@ -215,7 +215,9 @@ export class MemberService {
       throw new NotFoundException('Guild not found');
     }
 
-    const role = guild.roles.id(roleObjectId);
+    const role = guild.roles.find(
+      (r) => r._id.toString() === roleObjectId.toString(),
+    );
     if (!role) {
       throw new NotFoundException('Role not found in guild');
     }
@@ -335,7 +337,9 @@ export class MemberService {
     let permissions = everyoneRole ? everyoneRole.permissions : 0;
 
     for (const roleId of member.roles) {
-      const role = guild.roles.id(roleId);
+      const role = guild.roles.find(
+        (r) => r._id.toString() === roleId.toString(),
+      );
       if (role) {
         permissions = permissions | role.permissions;
       }
