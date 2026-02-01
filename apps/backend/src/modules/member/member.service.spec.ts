@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { MemberService } from './member.service';
 import { Member, memberSchema, MemberDocument } from './schemas/member.schema';
@@ -22,11 +22,7 @@ import {
   MemberFixturesHelper,
   ChannelFixturesHelper,
 } from '../../test/helpers/fixtures';
-import {
-  PERMISSIONS,
-  PERMISSIONOVERWRITE,
-  CHANNEL,
-} from '@discord-platform/shared';
+import { PERMISSIONS, PERMISSIONOVERWRITE } from '@discord-platform/shared';
 import { NotFoundException } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
