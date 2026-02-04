@@ -26,7 +26,7 @@ export class ChatService {
     const { channelId } = createMessageDTO;
     const channelObjectId = new Types.ObjectId(channelId);
     const channel = await this.channelModel
-      .exists({ channelId: channelObjectId })
+      .exists({ _id: channelObjectId })
       .session(session);
 
     if (!channel) {
