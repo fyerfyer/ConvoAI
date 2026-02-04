@@ -2,18 +2,37 @@ services:
   mongodb:
     image: mongo:7
     container_name: discord-test-mongodb
+    restart: unless-stopped
     ports:
       - '27018:27017'
     environment:
-      - MONGO_INITDB_DATABASE=discord-test
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-password123}
+    command: |
+      bash -c '
+        openssl rand -base64 756 > /data/mongodb-keyfile
+        chmod 400 /data/mongodb-keyfile
+        chown 999:999 /data/mongodb-keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/mongodb-keyfile
+      '
     volumes:
       - mongodb_test_data:/data/db
     healthcheck:
-      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
-      interval: 10s
+      test: |
+        mongosh --quiet -u $${MONGO_INITDB_ROOT_USERNAME:-admin} -p $${MONGO_INITDB_ROOT_PASSWORD:-password123} --authenticationDatabase admin --eval "
+        try {
+          rs.status();
+        } catch (err) {
+          rs.initiate({
+            _id: 'rs0',
+            members: [{ _id: 0, host: 'localhost:27017' }]
+          });
+        }
+        "
+      interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
 
   redis:
     image: redis:7-alpine

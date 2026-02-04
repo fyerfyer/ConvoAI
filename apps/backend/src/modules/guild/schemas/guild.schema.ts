@@ -10,7 +10,7 @@ import {
 export type GuildDocument = HydratedDocument<Guild>;
 export type GuildModel = Model<GuildDocument>;
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, optimisticConcurrency: true })
 export class Guild {
   @Prop({ type: String, required: true })
   name: string;
