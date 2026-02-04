@@ -114,51 +114,64 @@ export class ChannelService {
     updateChannelDTO: UpdateChannelDTO,
     session?: ClientSession,
   ): Promise<ChannelDocument> {
-    const channel = await this.channelModel
-      .findById(channelId)
-      .session(session);
-    if (!channel) {
-      throw new BadRequestException('Channel not found');
-    }
+    const MAX_RETRIES = 5;
+    let attempt = 0;
 
-    const permissions = await this.memberService.getMemberPermissions(
-      channel.guild.toString(),
-      userId,
-    );
+    while (attempt < MAX_RETRIES) {
+      try {
+        const channel = await this.channelModel
+          .findById(channelId)
+          .session(session);
+        if (!channel) {
+          throw new BadRequestException('Channel not found');
+        }
 
-    if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
-      throw new ForbiddenException(
-        'You do not have permission to update channels',
-      );
-    }
+        const permissions = await this.memberService.getMemberPermissions(
+          channel.guild.toString(),
+          userId,
+        );
 
-    if (updateChannelDTO.name) {
-      channel.name = updateChannelDTO.name.trim();
-    }
-    if (updateChannelDTO.topic !== undefined) {
-      channel.topic = updateChannelDTO.topic;
-    }
-    if (updateChannelDTO.parentId) {
-      const parentObjectId = new Types.ObjectId(updateChannelDTO.parentId);
-      const parent = await this.channelModel
-        .findById(parentObjectId)
-        .select('guild')
-        .lean()
-        .session(session);
-      if (!parent || !parent.guild.equals(channel.guild)) {
-        throw new BadRequestException('Invalid parent channel');
+        if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
+          throw new ForbiddenException(
+            'You do not have permission to update channels',
+          );
+        }
+
+        if (updateChannelDTO.name) {
+          channel.name = updateChannelDTO.name.trim();
+        }
+        if (updateChannelDTO.topic !== undefined) {
+          channel.topic = updateChannelDTO.topic;
+        }
+        if (updateChannelDTO.parentId) {
+          const parentObjectId = new Types.ObjectId(updateChannelDTO.parentId);
+          const parent = await this.channelModel
+            .findById(parentObjectId)
+            .select('guild')
+            .lean()
+            .session(session);
+          if (!parent || !parent.guild.equals(channel.guild)) {
+            throw new BadRequestException('Invalid parent channel');
+          }
+
+          channel.parentId = parentObjectId;
+        }
+        if (updateChannelDTO.userLimit !== undefined) {
+          channel.userLimit = updateChannelDTO.userLimit;
+        }
+        if (updateChannelDTO.position !== undefined) {
+          channel.position = updateChannelDTO.position;
+        }
+
+        return await channel.save({ session });
+      } catch (error) {
+        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+          attempt++;
+          continue;
+        }
+        throw error;
       }
-
-      channel.parentId = parentObjectId;
     }
-    if (updateChannelDTO.userLimit !== undefined) {
-      channel.userLimit = updateChannelDTO.userLimit;
-    }
-    if (updateChannelDTO.position !== undefined) {
-      channel.position = updateChannelDTO.position;
-    }
-
-    return channel.save({ session });
   }
 
   async deleteChannel(
@@ -194,46 +207,59 @@ export class ChannelService {
     permissionOverwriteDTO: PermissionOverwriteDTO,
     session?: ClientSession,
   ): Promise<ChannelDocument> {
-    const channel = await this.channelModel
-      .findById(channelId)
-      .session(session);
-    if (!channel) {
-      throw new NotFoundException('Channel not found');
+    const MAX_RETRIES = 5;
+    let attempt = 0;
+
+    while (attempt < MAX_RETRIES) {
+      try {
+        const channel = await this.channelModel
+          .findById(channelId)
+          .session(session);
+        if (!channel) {
+          throw new NotFoundException('Channel not found');
+        }
+
+        const permissions = await this.memberService.getMemberPermissions(
+          channel.guild.toString(),
+          userId,
+          undefined,
+          session,
+        );
+        if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
+          throw new ForbiddenException(
+            'You do not have permission to manage channel permissions',
+          );
+        }
+
+        // 检查是否已存在相关覆写
+        const existingIndex = channel.permissionOverwrites.findIndex(
+          (ow) =>
+            ow.id === permissionOverwriteDTO.id &&
+            ow.type === permissionOverwriteDTO.type,
+        );
+
+        if (existingIndex !== -1) {
+          channel.permissionOverwrites[existingIndex] = permissionOverwriteDTO;
+        } else {
+          channel.permissionOverwrites.push(permissionOverwriteDTO);
+        }
+
+        await channel.save({ session });
+
+        // 修改 Channel 权限覆写，升级整个 Guild 的权限版本号
+        await this.memberService.invalidateGuildPermissions(
+          channel.guild.toString(),
+        );
+
+        return channel;
+      } catch (error) {
+        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+          attempt++;
+          continue;
+        }
+        throw error;
+      }
     }
-
-    const permissions = await this.memberService.getMemberPermissions(
-      channel.guild.toString(),
-      userId,
-      undefined,
-      session,
-    );
-    if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
-      throw new ForbiddenException(
-        'You do not have permission to manage channel permissions',
-      );
-    }
-
-    // 检查是否已存在相关覆写
-    const existingIndex = channel.permissionOverwrites.findIndex(
-      (ow) =>
-        ow.id === permissionOverwriteDTO.id &&
-        ow.type === permissionOverwriteDTO.type,
-    );
-
-    if (existingIndex !== -1) {
-      channel.permissionOverwrites[existingIndex] = permissionOverwriteDTO;
-    } else {
-      channel.permissionOverwrites.push(permissionOverwriteDTO);
-    }
-
-    await channel.save({ session });
-
-    // 修改 Channel 权限覆写，升级整个 Guild 的权限版本号
-    await this.memberService.invalidateGuildPermissions(
-      channel.guild.toString(),
-    );
-
-    return channel;
   }
 
   async checkAccess(userId: string, channelId: string): Promise<boolean> {

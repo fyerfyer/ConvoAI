@@ -32,7 +32,7 @@ export class PermissionOverwrite {
 const permissionOverwriteSchema =
   SchemaFactory.createForClass(PermissionOverwrite);
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, optimisticConcurrency: true })
 export class Channel {
   @Prop({ type: String, required: true })
   name: string;
