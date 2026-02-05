@@ -24,7 +24,7 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { GlobalExceptionFilter } from '../../common/filters/global.filter';
+import { GlobalWsExceptionFilter } from './filters/ws-exception.filter';
 import { ChatService } from '../chat/chat.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { MessageDocument } from '../chat/schemas/message.schema';
@@ -36,7 +36,7 @@ import { ChannelService } from '../channel/channel.service';
     credentials: true,
   },
 })
-@UseFilters(new GlobalExceptionFilter())
+@UseFilters(new GlobalWsExceptionFilter())
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
