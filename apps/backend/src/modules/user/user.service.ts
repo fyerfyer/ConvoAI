@@ -27,7 +27,6 @@ export class UserService {
       throw new BadRequestException('User with this email already exists');
     }
 
-    // 创建 (Mongoose Schema 中通常有 pre-save hook 处理密码 hash)
     const createdUser = new this.userModel(createUserDTO);
     return createdUser.save();
   }
@@ -92,8 +91,8 @@ export class UserService {
       await this.imageService.deleteImage(user.avatar, BUCKETS.PUBLIC);
     }
 
-    await user.updateOne({ avatar: newAvatar.publicId });
-    return user;
+    user.avatar = newAvatar.publicId;
+    return user.save();
   }
 
   private convertToPublicUser(user: UserDocument): IUserPublic {
