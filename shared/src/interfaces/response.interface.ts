@@ -1,4 +1,4 @@
-import { ChannelKey, ChannelValue } from '../constants/channel.contant';
+import { ChannelValue } from '../constants/channel.contant';
 import { AttachmentValue } from '../constants/chat.constant';
 import { IUserPublic, IUserSummary } from './user.interface';
 

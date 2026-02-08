@@ -43,3 +43,7 @@ Thumbs.db
 
 vite.config.*.timestamp*
 *.log
+
+# Next.js
+.next
+out
