@@ -739,6 +739,13 @@ describe('ChatGateway (Real Socket.IO)', () => {
   describe('Event Listener (handleMessageCreated)', () => {
     it('should broadcast message to room when event is emitted', async () => {
       const ownerId = BaseFixturesHelper.generateObjectId();
+
+      // Create user for populate
+      await userFixtures.createTestUser({
+        _id: ownerId,
+        name: 'Test Owner',
+      });
+
       const guild = await guildFixtures.createTestGuild({ ownerId });
 
       await memberFixtures.createTestMember({

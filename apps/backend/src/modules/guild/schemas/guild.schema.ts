@@ -1,6 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { User } from '../../user/schemas/user.schema';
-import { HydratedDocument, Model, Types } from 'mongoose';
+import { UserDocument } from '../../user/schemas/user.schema';
+import {
+  HydratedDocument,
+  Model,
+  Types,
+  PopulatedDoc,
+  Document,
+} from 'mongoose';
+import { ChannelDocument } from '../../channel/schemas/channel.schema';
 import { Role, roleSchema } from './role.schema';
 import {
   DEFAULT_EVERYONE_PERMISSIONS,
@@ -19,14 +26,17 @@ export class Guild {
   icon?: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  owner: User;
+  owner: PopulatedDoc<UserDocument & Document>;
 
   @Prop({ type: [roleSchema], default: [] })
   roles: Types.DocumentArray<Role>;
 
   // 系统通道（例如发送欢迎信息）
   @Prop({ type: Types.ObjectId, ref: 'Channel' })
-  systemChannelId?: Types.ObjectId;
+  systemChannelId?: PopulatedDoc<ChannelDocument & Document>;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const guildSchema = SchemaFactory.createForClass(Guild);

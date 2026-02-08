@@ -11,7 +11,7 @@ export type AttachmentDto = z.infer<typeof attachmentShema>;
 
 export const createMessageDTOSchema = z.object({
   channelId: z.string(),
-  content: z.string().max(4000).nonempty(),
+  content: z.string().min(1).max(4000),
   replyTo: z.string().optional(),
   nonce: z.string().optional(),
   attachments: z.array(attachmentShema).optional(),

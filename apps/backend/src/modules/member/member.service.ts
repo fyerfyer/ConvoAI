@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Member, MemberDocument, MemberModel } from './schemas/member.schema';
 import { Guild, GuildModel } from '../guild/schemas/guild.schema';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
-import { ClientSession, Types } from 'mongoose';
+import { ClientSession, Types, Document } from 'mongoose';
+import { UserDocument } from '../user/schemas/user.schema';
 import {
   PERMISSIONS,
   PERMISSIONOVERWRITE,
@@ -157,12 +158,14 @@ export class MemberService {
   ): Promise<MemberDocument[]> {
     const userObjectId = new Types.ObjectId(userId);
     const guildObjectId = new Types.ObjectId(guildId);
-    return this.memberModel.find({ user: userObjectId, guild: guildObjectId });
+    return this.memberModel
+      .find({ user: userObjectId, guild: guildObjectId })
+      .populate('user');
   }
 
   async getGuildMembers(guildId: string): Promise<MemberDocument[]> {
     const guildObjectId = new Types.ObjectId(guildId);
-    return this.memberModel.find({ guild: guildObjectId });
+    return this.memberModel.find({ guild: guildObjectId }).populate('user');
   }
 
   async updateMemberNickname(
@@ -183,11 +186,13 @@ export class MemberService {
       throw new NotFoundException('Guild not found');
     }
 
-    const updatedMember = await this.memberModel.findOneAndUpdate(
-      { guild: guildObjectId, user: userObjectId },
-      { nickName: nickname },
-      { new: true, session },
-    );
+    const updatedMember = await this.memberModel
+      .findOneAndUpdate(
+        { guild: guildObjectId, user: userObjectId },
+        { nickName: nickname },
+        { new: true, session },
+      )
+      .populate('user');
 
     if (!updatedMember) {
       throw new NotFoundException('Member not found in guild');
@@ -441,5 +446,39 @@ export class MemberService {
       .session(session);
 
     return !!member;
+  }
+
+  public toMemberResponse(member: MemberDocument) {
+    let userId: string;
+    let userDetails = null;
+
+    if (!member.user) {
+      // Handle the case where user is not populated
+      throw new Error('Member user field is not populated or is null');
+    }
+
+    if (member.user instanceof Document) {
+      const userDoc = member.user as UserDocument;
+      userId = userDoc._id.toString();
+      userDetails = {
+        id: userId,
+        name: userDoc.name,
+        avatar: userDoc.avatar,
+      };
+    } else {
+      userId = member.user.toString();
+    }
+
+    const response = {
+      id: member._id.toString(),
+      userId: userId,
+      guildId: (member.guild as Types.ObjectId).toString(),
+      roles: member.roles.map((r) => r.toString()),
+      nickname: member.nickName,
+      joinedAt: member.joinedAt?.toISOString(),
+      user: userDetails,
+    };
+
+    return response;
   }
 }

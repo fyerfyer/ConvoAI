@@ -95,7 +95,7 @@ export class UserService {
     return user.save();
   }
 
-  private convertToPublicUser(user: UserDocument): IUserPublic {
+  convertToPublicUser(user: UserDocument): IUserPublic {
     return {
       id: user._id.toString(),
       email: user.email,

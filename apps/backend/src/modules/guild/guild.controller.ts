@@ -17,8 +17,14 @@ import {
   JwtPayload,
   PERMISSIONS,
   UpdateRoleDTO,
+  CreateGuildDTO,
+  GuildResponse,
+  ApiResponse,
+  createGuildSchema,
 } from '@discord-platform/shared';
 import { User } from '../../common/decorators/user.decorator';
+import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
+import { HttpStatus, UsePipes } from '@nestjs/common';
 
 @Controller('guilds')
 @UseGuards(JwtGuard, PermissionGuard)
@@ -26,13 +32,31 @@ export class GuildController {
   constructor(private readonly guildService: GuildService) {}
 
   @Post()
-  async createGuild(@User() user: JwtPayload, @Body('name') name: string) {
-    return this.guildService.createGuild(name, user.sub);
+  @UsePipes(new ZodValidationPipe(createGuildSchema))
+  async createGuild(
+    @User() user: JwtPayload,
+    @Body() createGuildDTO: CreateGuildDTO,
+  ): Promise<ApiResponse<GuildResponse>> {
+    const guild = await this.guildService.createGuild(
+      createGuildDTO.name,
+      user.sub,
+    );
+    return {
+      data: this.guildService.toGuildResponse(guild),
+      statusCode: HttpStatus.CREATED,
+      message: 'Guild created successfully',
+    };
   }
 
   @Get(':guildId')
-  async getGuild(@Param('guildId') guildId: string) {
-    return this.guildService.getGuildById(guildId);
+  async getGuild(
+    @Param('guildId') guildId: string,
+  ): Promise<ApiResponse<GuildResponse>> {
+    const guild = await this.guildService.getGuildById(guildId);
+    return {
+      data: this.guildService.toGuildResponse(guild),
+      statusCode: HttpStatus.OK,
+    };
   }
 
   @Post(':guildId/roles')
@@ -40,8 +64,13 @@ export class GuildController {
   async createRole(
     @Param('guildId') guildId: string,
     @Body() createRoleDTO: CreateRoleDTO,
-  ) {
-    return this.guildService.createRole(guildId, createRoleDTO);
+  ): Promise<ApiResponse<GuildResponse>> {
+    const guild = await this.guildService.createRole(guildId, createRoleDTO);
+    return {
+      data: this.guildService.toGuildResponse(guild),
+      statusCode: HttpStatus.CREATED,
+      message: 'Role created successfully',
+    };
   }
 
   @Patch(':guildId/roles/:roleId')
@@ -51,13 +80,20 @@ export class GuildController {
     @Param('guildId') guildId: string,
     @Param('roleId') roleId: string,
     @Body() updateRoleDTO: UpdateRoleDTO,
-  ) {
-    return this.guildService.updateRole(
+  ): Promise<ApiResponse<GuildResponse>> {
+    await this.guildService.updateRole(
       guildId,
       roleId,
       user.sub,
       updateRoleDTO,
     );
+
+    const guild = await this.guildService.getGuildById(guildId);
+    return {
+      data: this.guildService.toGuildResponse(guild),
+      statusCode: HttpStatus.OK,
+      message: 'Role updated successfully',
+    };
   }
 
   @Delete(':guildId/roles/:roleId')
@@ -65,7 +101,12 @@ export class GuildController {
   async deleteRole(
     @Param('guildId') guildId: string,
     @Param('roleId') roleId: string,
-  ) {
-    return this.guildService.deleteRole(guildId, roleId);
+  ): Promise<ApiResponse<GuildResponse>> {
+    const guild = await this.guildService.deleteRole(guildId, roleId);
+    return {
+      data: this.guildService.toGuildResponse(guild),
+      statusCode: HttpStatus.OK,
+      message: 'Role deleted successfully',
+    };
   }
 }

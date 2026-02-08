@@ -300,4 +300,15 @@ export class GuildService {
 
     return highestPosition;
   }
+
+  toGuildResponse(guild: GuildDocument) {
+    return {
+      id: guild._id.toString(),
+      name: guild.name,
+      icon: guild.icon,
+      ownerId: guild.owner.toString(),
+      createdAt: guild.createdAt.toISOString(),
+      updatedAt: guild.updatedAt.toISOString(),
+    };
+  }
 }

@@ -1,13 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  MongooseModule,
-  getModelToken,
-  getConnectionToken,
-} from '@nestjs/mongoose';
+import { MongooseModule, getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { UserService } from './user.service';
-import { User, userSchema, UserDocument } from './schemas/user.schema';
+import { User, userSchema } from './schemas/user.schema';
 import { ImageService } from '../media/services/image.service';
 import { S3Service } from '../../common/configs/s3/s3.service';
 import { AppLogger } from '../../common/configs/logger/logger.service';
@@ -17,13 +13,11 @@ import {
   UpdateUserDTO,
   BUCKETS,
 } from '@discord-platform/shared';
-import { Model } from 'mongoose';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { S3Client, CreateBucketCommand } from '@aws-sdk/client-s3';
 import { BadRequestException } from '@nestjs/common';
 
-// Load test environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../../.env.test') });
 
 describe('UserService', () => {
@@ -59,7 +53,7 @@ describe('UserService', () => {
           new CreateBucketCommand({ Bucket: BUCKETS.PUBLIC }),
         );
         break;
-      } catch (error) {
+      } catch {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }

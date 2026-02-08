@@ -17,3 +17,5 @@ export * from './dtos/user.dto';
 export * from './dtos/chat.dto';
 export * from './constants/event.constant';
 export * from './constants/socket.constant';
+export * from './dtos/guild.dto';
+export * from './constants/chat.constant';

@@ -12,6 +12,7 @@ import { GatewaySessionManager } from './gateway.session';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
 import {
   CreateMessageDTO,
+  createMessageDTOSchema,
   JwtPayload,
   MESSAGE_EVENT,
   SOCKET_EVENT,
@@ -24,6 +25,7 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 import { GlobalWsExceptionFilter } from './filters/ws-exception.filter';
 import { ChatService } from '../chat/chat.service';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -126,7 +128,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage(SOCKET_EVENT.SEND_MESSAGE)
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: CreateMessageDTO,
+    @MessageBody(new ZodValidationPipe(createMessageDTOSchema))
+    payload: CreateMessageDTO,
   ) {
     const user: JwtPayload = client.data.user;
     await this.chatService.createMessage(user.sub, payload);
@@ -150,10 +153,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // 监听全局消息事件
   @OnEvent(MESSAGE_EVENT.CREATE_MESSAGE)
-  handleMessageCreated(message: MessageDocument) {
+  async handleMessageCreated(message: MessageDocument) {
     const roomId = message.channelId.toString();
+    const response = await this.chatService.toMessageResponse(message);
 
     // 向房间内所有用户广播消息
-    this.server.to(roomId).emit(SOCKET_EVENT.NEW_MESSAGE, message);
+    this.server.to(roomId).emit(SOCKET_EVENT.NEW_MESSAGE, response);
   }
 }

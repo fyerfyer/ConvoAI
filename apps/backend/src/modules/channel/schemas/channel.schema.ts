@@ -5,7 +5,14 @@ import {
   PermissionOverwriteValue,
 } from '@discord-platform/shared';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Model, Types } from 'mongoose';
+import {
+  HydratedDocument,
+  Model,
+  Types,
+  PopulatedDoc,
+  Document,
+} from 'mongoose';
+import { GuildDocument } from '../../guild/schemas/guild.schema';
 
 export type ChannelDocument = HydratedDocument<Channel>;
 export type ChannelModel = Model<ChannelDocument>;
@@ -45,10 +52,10 @@ export class Channel {
   type: ChannelValue;
 
   @Prop({ type: Types.ObjectId, ref: 'Guild', required: true })
-  guild: Types.ObjectId;
+  guild: PopulatedDoc<GuildDocument & Document>;
 
   @Prop({ type: Types.ObjectId, ref: 'Channel', default: null })
-  parentId?: Types.ObjectId;
+  parentId?: PopulatedDoc<ChannelDocument & Document>;
 
   @Prop({ type: String, default: null })
   topic?: string;
@@ -61,6 +68,9 @@ export class Channel {
 
   @Prop({ type: Number, default: 0 })
   position: number;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const channelSchema = SchemaFactory.createForClass(Channel);

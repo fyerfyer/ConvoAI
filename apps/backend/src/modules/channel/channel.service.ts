@@ -57,7 +57,7 @@ export class ChannelService {
         .select('guild type permissionOverwrites')
         .lean()
         .session(session);
-      if (!parent || !parent.guild.equals(guildObjectId)) {
+      if (!parent || !(parent.guild as Types.ObjectId).equals(guildObjectId)) {
         throw new BadRequestException('Invalid parent channel');
       }
 
@@ -127,7 +127,7 @@ export class ChannelService {
         }
 
         const permissions = await this.memberService.getMemberPermissions(
-          channel.guild.toString(),
+          (channel.guild as Types.ObjectId).toString(),
           userId,
         );
 
@@ -150,7 +150,12 @@ export class ChannelService {
             .select('guild')
             .lean()
             .session(session);
-          if (!parent || !parent.guild.equals(channel.guild)) {
+          if (
+            !parent ||
+            !(parent.guild as Types.ObjectId).equals(
+              channel.guild as Types.ObjectId,
+            )
+          ) {
             throw new BadRequestException('Invalid parent channel');
           }
 
@@ -187,7 +192,7 @@ export class ChannelService {
     }
 
     const permissions = await this.memberService.getMemberPermissions(
-      channel.guild.toString(),
+      (channel.guild as Types.ObjectId).toString(),
       userId,
       undefined,
       session,
@@ -220,7 +225,7 @@ export class ChannelService {
         }
 
         const permissions = await this.memberService.getMemberPermissions(
-          channel.guild.toString(),
+          (channel.guild as Types.ObjectId).toString(),
           userId,
           undefined,
           session,
@@ -248,7 +253,7 @@ export class ChannelService {
 
         // 修改 Channel 权限覆写，升级整个 Guild 的权限版本号
         await this.memberService.invalidateGuildPermissions(
-          channel.guild.toString(),
+          (channel.guild as Types.ObjectId).toString(),
         );
 
         return channel;
@@ -267,10 +272,23 @@ export class ChannelService {
     if (!channel) return false;
 
     const permissions = await this.memberService.getMemberPermissions(
-      channel.guild.toString(),
+      (channel.guild as Types.ObjectId).toString(),
       userId,
       channelId,
     );
     return PermissionUtil.has(permissions, PERMISSIONS.VIEW_CHANNELS);
+  }
+
+  public toChannelResponse(channel: ChannelDocument) {
+    return {
+      id: channel._id.toString(),
+      name: channel.name,
+      type: channel.type,
+      guildId: (channel.guild as Types.ObjectId).toString(),
+      position: channel.position,
+      parentId: channel.parentId?.toString(),
+      createdAt: channel.createdAt?.toISOString(),
+      updatedAt: channel.updatedAt?.toISOString(),
+    };
   }
 }

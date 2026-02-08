@@ -1,5 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Model, Types } from 'mongoose';
+import {
+  HydratedDocument,
+  Model,
+  Types,
+  PopulatedDoc,
+  Document,
+} from 'mongoose';
+import { UserDocument } from '../../user/schemas/user.schema';
+import { GuildDocument } from '../../guild/schemas/guild.schema';
 
 export type MemberDocument = HydratedDocument<Member>;
 export type MemberModel = Model<MemberDocument>;
@@ -7,10 +15,10 @@ export type MemberModel = Model<MemberDocument>;
 @Schema({ timestamps: true })
 export class Member {
   @Prop({ type: Types.ObjectId, ref: 'Guild', required: true })
-  guild: Types.ObjectId;
+  guild: PopulatedDoc<GuildDocument & Document>;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  user: Types.ObjectId;
+  user: PopulatedDoc<UserDocument & Document>;
 
   @Prop({ type: String })
   nickName?: string; // 在服务器中的专属昵称

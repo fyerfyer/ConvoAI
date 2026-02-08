@@ -21,7 +21,6 @@ import {
 } from '../guild/schemas/guild.schema';
 import { Member, memberSchema } from '../member/schemas/member.schema';
 import { User, userSchema, UserDocument } from '../user/schemas/user.schema';
-const REDIS_CLIENT = 'REDIS_CLIENT';
 import { TestDatabaseHelper, TestRedisHelper } from '../../test/helpers';
 import {
   GuildFixturesHelper,
@@ -37,6 +36,7 @@ import {
 import { NotFoundException } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env.test') });
 
@@ -124,7 +124,7 @@ describe('ChatService', () => {
       await userModel.create({
         _id: ownerId,
 
-        email: 'test@example.com',
+        email: `test-${ownerId}@example.com`,
         password: 'password123',
         name: 'Test User',
       });
@@ -146,8 +146,9 @@ describe('ChatService', () => {
 
       expect(message).toBeDefined();
       expect(message.content).toBe('Hello world');
-      expect(message.sender._id.toString()).toBe(ownerId.toString());
-      expect(message.channelId.toString()).toBe(channel._id.toString());
+      expect(message.sender).toBeDefined();
+      expect(message.sender?._id.toString()).toBe(ownerId.toString());
+      expect(message.channelId?.toString()).toBe(channel._id.toString());
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         MESSAGE_EVENT.CREATE_MESSAGE,
         expect.anything(),
@@ -192,7 +193,11 @@ describe('ChatService', () => {
       );
 
       expect(reply.replyTo).toBeDefined();
-      expect(reply.replyTo.toString()).toBe(originalMessage._id.toString());
+      // replyTo 可能是 ObjectId 或者被 populate 的对象
+      const replyToId = reply.replyTo._id
+        ? reply.replyTo._id.toString()
+        : reply.replyTo.toString();
+      expect(replyToId).toBe(originalMessage._id.toString());
     });
   });
 

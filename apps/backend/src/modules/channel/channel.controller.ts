@@ -17,7 +17,13 @@ import {
   JwtPayload,
   PERMISSIONS,
   UpdateChannelDTO,
+  createChannelSchema,
+  updateChannelSchema,
+  ApiResponse,
+  ChannelResponse,
 } from '@discord-platform/shared';
+import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
+import { HttpStatus, UsePipes } from '@nestjs/common';
 import { User } from '../../common/decorators/user.decorator';
 
 @Controller('channels')
@@ -27,30 +33,42 @@ export class ChannelController {
 
   @Post()
   @RequirePermissions(PERMISSIONS.MANAGE_GUILD)
+  @UsePipes(new ZodValidationPipe(createChannelSchema))
   async createChannel(
     @User() user: JwtPayload,
     @Query('guildId') guildId: string,
     @Body() createChannelDTO: CreateChannelDTO,
-  ) {
-    return this.channelService.createChannel(
+  ): Promise<ApiResponse<ChannelResponse>> {
+    const channel = await this.channelService.createChannel(
       guildId,
       user.sub,
       createChannelDTO,
     );
+    return {
+      data: this.channelService.toChannelResponse(channel),
+      statusCode: HttpStatus.CREATED,
+      message: 'Channel created successfully',
+    };
   }
 
   @Patch(':channelId')
   @RequirePermissions(PERMISSIONS.MANAGE_GUILD)
+  @UsePipes(new ZodValidationPipe(updateChannelSchema))
   async updateChannel(
     @User() user: JwtPayload,
     @Param('channelId') channelId: string,
     @Body() updateChannelDTO: UpdateChannelDTO,
-  ) {
-    return this.channelService.updateChannel(
+  ): Promise<ApiResponse<ChannelResponse>> {
+    const channel = await this.channelService.updateChannel(
       channelId,
       user.sub,
       updateChannelDTO,
     );
+    return {
+      data: this.channelService.toChannelResponse(channel),
+      statusCode: HttpStatus.OK,
+      message: 'Channel updated successfully',
+    };
   }
 
   @Delete(':channelId')
@@ -58,7 +76,11 @@ export class ChannelController {
   async deleteChannel(
     @User() user: JwtPayload,
     @Param('channelId') channelId: string,
-  ) {
-    return this.channelService.deleteChannel(channelId, user.sub);
+  ): Promise<ApiResponse<null>> {
+    await this.channelService.deleteChannel(channelId, user.sub);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Channel deleted successfully',
+    };
   }
 }

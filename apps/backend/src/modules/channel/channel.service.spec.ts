@@ -1,24 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { ChannelService } from './channel.service';
-import {
-  Channel,
-  channelSchema,
-  ChannelDocument,
-} from './schemas/channel.schema';
+import { Channel, channelSchema, ChannelModel } from './schemas/channel.schema';
 import { MemberService } from '../member/member.service';
 import {
   Member,
   memberSchema,
-  MemberDocument,
+  MemberModel,
 } from '../member/schemas/member.schema';
-import {
-  Guild,
-  guildSchema,
-  GuildDocument,
-} from '../guild/schemas/guild.schema';
+import { Guild, guildSchema, GuildModel } from '../guild/schemas/guild.schema';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 import { TestDatabaseHelper, TestRedisHelper } from '../../test/helpers';
 import {
@@ -49,9 +40,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env.test') });
 describe('ChannelService', () => {
   let module: TestingModule;
   let channelService: ChannelService;
-  let guildModel: Model<GuildDocument>;
-  let memberModel: Model<MemberDocument>;
-  let channelModel: Model<ChannelDocument>;
+  let guildModel: GuildModel;
+  let memberModel: MemberModel;
+  let channelModel: ChannelModel;
   let guildFixtures: GuildFixturesHelper;
   let memberFixtures: MemberFixturesHelper;
   let channelFixtures: ChannelFixturesHelper;
@@ -88,11 +79,9 @@ describe('ChannelService', () => {
     }).compile();
 
     channelService = module.get<ChannelService>(ChannelService);
-    guildModel = module.get<Model<GuildDocument>>(getModelToken(Guild.name));
-    memberModel = module.get<Model<MemberDocument>>(getModelToken(Member.name));
-    channelModel = module.get<Model<ChannelDocument>>(
-      getModelToken(Channel.name),
-    );
+    guildModel = module.get<GuildModel>(getModelToken(Guild.name));
+    memberModel = module.get<MemberModel>(getModelToken(Member.name));
+    channelModel = module.get<ChannelModel>(getModelToken(Channel.name));
 
     guildFixtures = new GuildFixturesHelper(guildModel);
     memberFixtures = new MemberFixturesHelper(memberModel);

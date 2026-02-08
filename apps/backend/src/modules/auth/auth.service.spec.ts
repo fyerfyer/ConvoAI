@@ -8,7 +8,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
-import { User, userSchema, UserDocument } from '../user/schemas/user.schema';
+import {
+  User,
+  userSchema,
+  UserDocument,
+  UserModel,
+} from '../user/schemas/user.schema';
 import { TestDatabaseHelper, TestRedisHelper } from '../../test/helpers';
 import { LoginDTO, RegisterDTO } from '@discord-platform/shared';
 import { Model, Connection } from 'mongoose';
@@ -98,7 +103,7 @@ describe('AuthService', () => {
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
-    userModel = module.get<Model<UserDocument>>(getModelToken(User.name));
+    userModel = module.get<UserModel>(getModelToken(User.name));
     connection = module.get<Connection>(getConnectionToken());
   });
 

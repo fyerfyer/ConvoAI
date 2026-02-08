@@ -7,7 +7,7 @@ import {
 } from './schemas/message.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CreateMessageDTO, MESSAGE_EVENT } from '@discord-platform/shared';
-import { ClientSession, Types } from 'mongoose';
+import { ClientSession, Types, Document } from 'mongoose';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
 
 @Injectable()
@@ -48,7 +48,7 @@ export class ChatService {
     await message.save({ session });
 
     const populatedMessage = await message.populate([
-      { path: 'sender', select: 'username avatar' },
+      { path: 'sender', select: 'name avatar' },
       { path: 'replyTo', select: 'content sender' },
     ]);
 
@@ -73,8 +73,59 @@ export class ChatService {
       .find(query)
       .sort({ _id: -1 })
       .limit(limit)
-      .populate('sender', 'username avatar')
+      .populate('sender', 'name avatar')
       .populate('replyTo', 'content sender')
       .exec();
+  }
+  async populateMessage(message: MessageDocument): Promise<MessageDocument> {
+    // 如果已经 populated，直接返回
+    if (message.sender && message.sender instanceof Document) {
+      return message;
+    }
+
+    // 否则手动 populate
+    return this.messageModel
+      .findById(message._id)
+      .populate('sender', 'name avatar')
+      .populate('replyTo', 'content sender')
+      .exec() as Promise<MessageDocument>;
+  }
+
+  async toMessageResponse(message: MessageDocument) {
+    // 确保消息已经 populated
+    const populatedMessage = await this.populateMessage(message);
+
+    if (
+      !populatedMessage.sender ||
+      !(populatedMessage.sender instanceof Document)
+    ) {
+      throw new Error('Message sender not populated');
+    }
+
+    const sender = populatedMessage.sender;
+
+    return {
+      id: populatedMessage._id.toString(),
+      content: populatedMessage.content,
+      channelId: (populatedMessage.channelId as Types.ObjectId).toString(),
+      author: {
+        id: sender._id.toString(),
+        name: sender.name,
+        avatar: sender.avatar,
+        isBot: sender.isBot,
+      },
+      attachments: populatedMessage.attachments.map((att) => ({
+        url: att.url,
+        filename: att.filename,
+        size: att.size,
+        type: att.contentType.startsWith('image/')
+          ? 'image'
+          : att.contentType.startsWith('video/')
+            ? 'video'
+            : 'file',
+      })),
+      createdAt: populatedMessage.createdAt?.toISOString(),
+      updatedAt: populatedMessage.updatedAt?.toISOString(),
+    };
   }
 }

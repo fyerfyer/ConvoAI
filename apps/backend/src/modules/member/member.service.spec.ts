@@ -3,17 +3,30 @@ import { MongooseModule, getModelToken } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { MemberService } from './member.service';
-import { Member, memberSchema, MemberDocument } from './schemas/member.schema';
+import {
+  Member,
+  memberSchema,
+  MemberDocument,
+  MemberModel,
+} from './schemas/member.schema';
 import {
   Guild,
   guildSchema,
   GuildDocument,
+  GuildModel,
 } from '../guild/schemas/guild.schema';
 import {
   Channel,
   channelSchema,
   ChannelDocument,
+  ChannelModel,
 } from '../channel/schemas/channel.schema';
+import {
+  User,
+  UserDocument,
+  UserModel,
+  userSchema,
+} from '../user/schemas/user.schema';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 import { TestDatabaseHelper, TestRedisHelper } from '../../test/helpers';
 import {
@@ -21,6 +34,7 @@ import {
   GuildFixturesHelper,
   MemberFixturesHelper,
   ChannelFixturesHelper,
+  UserFixturesHelper,
 } from '../../test/helpers/fixtures';
 import { PERMISSIONS, PERMISSIONOVERWRITE } from '@discord-platform/shared';
 import { NotFoundException } from '@nestjs/common';
@@ -33,12 +47,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env.test') });
 describe('MemberService', () => {
   let module: TestingModule;
   let memberService: MemberService;
-  let guildModel: Model<GuildDocument>;
-  let memberModel: Model<MemberDocument>;
-  let channelModel: Model<ChannelDocument>;
+  let guildModel: GuildModel;
+  let memberModel: MemberModel;
+  let channelModel: ChannelModel;
   let guildFixtures: GuildFixturesHelper;
   let memberFixtures: MemberFixturesHelper;
   let channelFixtures: ChannelFixturesHelper;
+  let userFixtures: UserFixturesHelper;
+  let userModel: UserModel;
 
   beforeAll(async () => {
     // Connect to test infrastructure
@@ -59,6 +75,7 @@ describe('MemberService', () => {
           { name: Guild.name, schema: guildSchema },
           { name: Member.name, schema: memberSchema },
           { name: Channel.name, schema: channelSchema },
+          { name: User.name, schema: userSchema },
         ]),
       ],
       providers: [
@@ -80,6 +97,8 @@ describe('MemberService', () => {
     guildFixtures = new GuildFixturesHelper(guildModel);
     memberFixtures = new MemberFixturesHelper(memberModel);
     channelFixtures = new ChannelFixturesHelper(channelModel);
+    userModel = module.get<UserModel>(getModelToken(User.name));
+    userFixtures = new UserFixturesHelper(userModel);
   });
 
   afterAll(async () => {
@@ -221,6 +240,9 @@ describe('MemberService', () => {
       const userId = BaseFixturesHelper.generateObjectId();
       const guild = await guildFixtures.createTestGuild({ ownerId });
 
+      // Create actual user document
+      await userFixtures.createTestUser({ _id: userId });
+
       await memberFixtures.createTestMember({
         guildId: guild._id,
         userId,
@@ -233,7 +255,9 @@ describe('MemberService', () => {
       );
 
       expect(members).toHaveLength(1);
-      expect(members[0].user.toString()).toBe(userId.toString());
+      expect((members[0].user as UserDocument)._id.toString()).toBe(
+        userId.toString(),
+      );
       expect(members[0].nickName).toBe('TestUser');
     });
 
@@ -305,6 +329,10 @@ describe('MemberService', () => {
       const userId1 = BaseFixturesHelper.generateObjectId();
       const userId2 = BaseFixturesHelper.generateObjectId();
 
+      // Create actual user documents
+      await userFixtures.createTestUser({ _id: userId1 });
+      await userFixtures.createTestUser({ _id: userId2 });
+
       await memberFixtures.createTestMember({
         guildId: guild1._id,
         userId: userId1,
@@ -319,7 +347,9 @@ describe('MemberService', () => {
       );
 
       expect(members).toHaveLength(1);
-      expect(members[0].user.toString()).toBe(userId1.toString());
+      expect((members[0].user as UserDocument)._id.toString()).toBe(
+        userId1.toString(),
+      );
     });
   });
 

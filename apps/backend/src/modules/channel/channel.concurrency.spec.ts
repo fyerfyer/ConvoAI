@@ -4,25 +4,16 @@ jest.mock('../../common/configs/redis/redis.module', () => ({
 }));
 
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { ChannelService } from './channel.service';
-import {
-  Channel,
-  channelSchema,
-  ChannelDocument,
-} from './schemas/channel.schema';
-import {
-  Guild,
-  guildSchema,
-  GuildDocument,
-} from '../guild/schemas/guild.schema';
+import { Channel, ChannelModel, channelSchema } from './schemas/channel.schema';
+import { Guild, guildSchema, GuildModel } from '../guild/schemas/guild.schema';
 import { Member, memberSchema } from '../member/schemas/member.schema';
 import { MemberService } from '../member/member.service';
 import { GuildService } from '../guild/guild.service';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 import { TestDatabaseHelper, TestRedisHelper } from '../../test/helpers';
-// Use relative paths to access fixtures based on directory structure found
 import { ChannelFixturesHelper } from '../../test/helpers/fixtures/channel/channel-fixtures.helper';
 import { GuildFixturesHelper } from '../../test/helpers/fixtures/guild/guild-fixtures.helper';
 import { PERMISSIONOVERWRITE, PERMISSIONS } from '@discord-platform/shared';
@@ -34,8 +25,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env.test') });
 describe('ChannelService Concurrency', () => {
   let module: TestingModule;
   let channelService: ChannelService;
-  let guildModel: Model<GuildDocument>;
-  let channelModel: Model<ChannelDocument>;
+  let guildModel: GuildModel;
+  let channelModel: ChannelModel;
   let guildFixtures: GuildFixturesHelper;
   let channelFixtures: ChannelFixturesHelper;
 
@@ -71,10 +62,8 @@ describe('ChannelService Concurrency', () => {
     }).compile();
 
     channelService = module.get<ChannelService>(ChannelService);
-    guildModel = module.get<Model<GuildDocument>>(getModelToken(Guild.name));
-    channelModel = module.get<Model<ChannelDocument>>(
-      getModelToken(Channel.name),
-    );
+    guildModel = module.get<GuildModel>(getModelToken(Guild.name));
+    channelModel = module.get<ChannelModel>(getModelToken(Channel.name));
 
     guildFixtures = new GuildFixturesHelper(guildModel);
     channelFixtures = new ChannelFixturesHelper(channelModel);

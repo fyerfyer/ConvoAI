@@ -41,7 +41,6 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-// Load test environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../../.env.test') });
 
 describe('ChannelController', () => {
@@ -136,8 +135,11 @@ describe('ChannelController', () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.name).toBe('new-channel');
-      expect(result.guild.toString()).toBe(guild._id.toString());
+      expect(result.data).toBeDefined();
+      expect(result.data?.name).toBe('new-channel');
+      expect(result.data?.guildId).toBe(guild._id.toString());
+      expect(result.statusCode).toBe(201);
+      expect(result.message).toBe('Channel created successfully');
     });
 
     it('should throw ForbiddenException if user lacks permission', async () => {
@@ -183,8 +185,10 @@ describe('ChannelController', () => {
         updateDTO,
       );
 
-      expect(result.name).toBe('new-name');
-      expect(result.topic).toBe('updated topic');
+      expect(result.data).toBeDefined();
+      expect(result.data?.name).toBe('new-name');
+      expect(result.statusCode).toBe(200);
+      expect(result.message).toBe('Channel updated successfully');
     });
 
     it('should throw ForbiddenException if user lacks permission', async () => {
@@ -220,8 +224,13 @@ describe('ChannelController', () => {
       });
       const user = createMockUser(ownerId.toString());
 
-      await controller.deleteChannel(user, channel._id.toString());
+      const result = await controller.deleteChannel(
+        user,
+        channel._id.toString(),
+      );
 
+      expect(result.statusCode).toBe(200);
+      expect(result.message).toBe('Channel deleted successfully');
       const deleted = await channelModel.findById(channel._id);
       expect(deleted).toBeNull();
     });
