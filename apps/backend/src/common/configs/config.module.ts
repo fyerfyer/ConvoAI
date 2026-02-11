@@ -6,13 +6,23 @@ import redisConfig from './redis.config';
 import s3Config from './s3.config';
 import loggerConfig from './logger.config';
 import Joi from 'joi';
+import { join } from 'path';
 
 @Module({
   imports: [
     NestConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig, mongoConfig, redisConfig, s3Config, loggerConfig],
-      envFilePath: ['.env', 'env.test'],
+      envFilePath: [
+        // 使用 process.cwd() 获取工作目录
+        join(process.cwd(), 'apps/backend/.env'),
+        join(process.cwd(), 'apps/backend/.env.test'),
+        join(process.cwd(), '.env'),
+        join(process.cwd(), '.env.test'),
+        // 兼容旧路径
+        '.env',
+        '.env.test',
+      ],
       validationSchema: Joi.object({
         NODE_ENV: Joi.string()
           .valid('development', 'production')

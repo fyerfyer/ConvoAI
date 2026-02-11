@@ -44,26 +44,31 @@
       "executor": "nx:noop"
     },
     "serve": {
-      "continuous": true,
-      "executor": "@nx/js:node",
+      "executor": "nx:run-commands",
       "defaultConfiguration": "development",
       "dependsOn": ["build"],
       "options": {
-        "buildTarget": "backend:build",
-        "runBuildTargetDependencies": false
+        "command": "node --inspect dist/apps/backend/main.js",
+        "cwd": "{workspaceRoot}"
       },
       "configurations": {
         "development": {
-          "buildTarget": "backend:build:development"
+          "command": "node --inspect dist/apps/backend/main.js"
         },
         "production": {
-          "buildTarget": "backend:build:production"
+          "command": "node dist/apps/backend/main.js"
         }
       }
     },
     "test": {
       "options": {
         "passWithNoTests": true
+      }
+    },
+    "docker-serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose up discord-backend"
       }
     }
   }

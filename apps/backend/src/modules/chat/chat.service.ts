@@ -6,7 +6,11 @@ import {
   MessageModel,
 } from './schemas/message.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { CreateMessageDTO, MESSAGE_EVENT } from '@discord-platform/shared';
+import {
+  AttachmentValue,
+  CreateMessageDTO,
+  MESSAGE_EVENT,
+} from '@discord-platform/shared';
 import { ClientSession, Types, Document } from 'mongoose';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
 
@@ -118,11 +122,11 @@ export class ChatService {
         url: att.url,
         filename: att.filename,
         size: att.size,
-        type: att.contentType.startsWith('image/')
+        type: (att.contentType.startsWith('image/')
           ? 'image'
           : att.contentType.startsWith('video/')
             ? 'video'
-            : 'file',
+            : 'file') as AttachmentValue,
       })),
       createdAt: populatedMessage.createdAt?.toISOString(),
       updatedAt: populatedMessage.updatedAt?.toISOString(),

@@ -2,6 +2,7 @@ export * from './dtos/auth.dto';
 export * from './dtos/role.dto';
 export * from './contracts/auth.contract';
 export * from './contracts/role.contract';
+export * from './contracts/api.contract';
 export * from './interfaces/api.interface';
 export * from './interfaces/auth.interface';
 export * from './interfaces/response.interface';

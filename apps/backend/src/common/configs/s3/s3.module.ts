@@ -81,41 +81,11 @@ export class S3Module implements OnModuleInit {
     for (const bucketName of Object.values(BUCKETS)) {
       try {
         // 检查 bucket 是否存在
+        let bucketExists = false;
         try {
           await this.s3.send(new HeadBucketCommand({ Bucket: bucketName }));
-
-          // 设置 CORS 配置
-          try {
-            await this.s3.send(
-              new PutBucketCorsCommand({
-                Bucket: bucketName,
-                CORSConfiguration: CORS_CONFIGURATION,
-              }),
-            );
-          } catch (corsErr) {
-            console.warn(
-              { err: corsErr, bucket: bucketName },
-              'Failed to set CORS configuration',
-            );
-          }
-
-          // 确保 public bucket 有公开读权限
-          if (bucketName === BUCKETS.PUBLIC) {
-            try {
-              await this.s3.send(
-                new PutBucketPolicyCommand({
-                  Bucket: bucketName,
-                  Policy: JSON.stringify(PUBLIC_READ_POLICY(bucketName)),
-                }),
-              );
-              console.info(`Set public read policy for bucket: ${bucketName}`);
-            } catch (policyErr) {
-              console.warn(
-                { err: policyErr, bucket: bucketName },
-                'Failed to set bucket policy (may already be set)',
-              );
-            }
-          }
+          bucketExists = true;
+          console.info(`Bucket already exists: ${bucketName}`);
         } catch (err) {
           if (
             err.name === 'NotFound' ||
@@ -128,7 +98,15 @@ export class S3Module implements OnModuleInit {
               }),
             );
             console.info(`Successfully created bucket: ${bucketName}`);
-            // 设置 CORS 配置
+            bucketExists = true;
+          } else {
+            throw err;
+          }
+        }
+
+        if (bucketExists) {
+          // 尝试设置 CORS 配置 (MinIO 可能不支持)
+          try {
             await this.s3.send(
               new PutBucketCorsCommand({
                 Bucket: bucketName,
@@ -136,9 +114,23 @@ export class S3Module implements OnModuleInit {
               }),
             );
             console.info(`Set CORS configuration for bucket: ${bucketName}`);
+          } catch (corsErr) {
+            // MinIO 通常返回 501 NotImplemented，这是正常的
+            if (corsErr.$metadata?.httpStatusCode === 501) {
+              console.info(
+                `Skipping CORS configuration for ${bucketName} (MinIO does not support this feature)`,
+              );
+            } else {
+              console.warn(
+                `Failed to set CORS configuration for ${bucketName}:`,
+                corsErr.message,
+              );
+            }
+          }
 
-            // 为 public bucket 设置公开读权限
-            if (bucketName === BUCKETS.PUBLIC) {
+          // 为 public bucket 设置公开读权限
+          if (bucketName === BUCKETS.PUBLIC) {
+            try {
               await this.s3.send(
                 new PutBucketPolicyCommand({
                   Bucket: bucketName,
@@ -146,17 +138,28 @@ export class S3Module implements OnModuleInit {
                 }),
               );
               console.info(`Set public read policy for bucket: ${bucketName}`);
+            } catch (policyErr) {
+              // MinIO 可能也不支持 bucket policy
+              if (policyErr.$metadata?.httpStatusCode === 501) {
+                console.info(
+                  `Skipping bucket policy for ${bucketName} (MinIO does not support this feature)`,
+                );
+              } else {
+                console.warn(
+                  `Failed to set bucket policy for ${bucketName}:`,
+                  policyErr.message,
+                );
+              }
             }
-          } else {
-            throw err;
           }
         }
       } catch (error) {
         console.error(
-          { err: error, bucket: bucketName },
-          `Failed to initialize bucket: ${bucketName}`,
+          `Failed to initialize bucket ${bucketName}:`,
+          error.message,
         );
-        throw error;
+        // 不抛出错误，让应用继续启动
+        // 如果 bucket 初始化失败，文件上传功能可能不可用，但不应该阻止整个应用启动
       }
     }
   }

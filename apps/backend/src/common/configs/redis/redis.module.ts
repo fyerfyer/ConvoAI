@@ -2,7 +2,6 @@ import { Global, Module } from '@nestjs/common';
 import redisConfig from '../redis.config';
 import { ConfigType } from '@nestjs/config';
 import Redis from 'ioredis';
-import { ConfigModule } from '../config.module';
 
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 export const REDIS_SUBSCRIBER = 'REDIS_SUBSCRIBER';
@@ -28,7 +27,7 @@ export const REDIS_SUBSCRIBER = 'REDIS_SUBSCRIBER';
         });
       },
     },
-    ConfigModule,
   ],
+  exports: [REDIS_CLIENT, REDIS_SUBSCRIBER],
 })
 export class RedisModule {}

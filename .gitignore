@@ -47,3 +47,6 @@ vite.config.*.timestamp*
 # Next.js
 .next
 out
+
+self-docs
+*.env
