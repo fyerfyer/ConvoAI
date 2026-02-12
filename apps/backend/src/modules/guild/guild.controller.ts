@@ -19,23 +19,29 @@ import {
   UpdateRoleDTO,
   CreateGuildDTO,
   GuildResponse,
+  GuildListResponse,
+  ChannelListResponse,
   ApiResponse,
   createGuildSchema,
 } from '@discord-platform/shared';
+import { ChannelService } from '../channel/channel.service';
 import { User } from '../../common/decorators/user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
-import { HttpStatus, UsePipes } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 
 @Controller('guilds')
-@UseGuards(JwtGuard, PermissionGuard)
+@UseGuards(JwtGuard)
 export class GuildController {
-  constructor(private readonly guildService: GuildService) {}
+  constructor(
+    private readonly guildService: GuildService,
+    private readonly channelService: ChannelService,
+  ) {}
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createGuildSchema))
   async createGuild(
     @User() user: JwtPayload,
-    @Body() createGuildDTO: CreateGuildDTO,
+    @Body(new ZodValidationPipe(createGuildSchema))
+    createGuildDTO: CreateGuildDTO,
   ): Promise<ApiResponse<GuildResponse>> {
     const guild = await this.guildService.createGuild(
       createGuildDTO.name,
@@ -48,7 +54,21 @@ export class GuildController {
     };
   }
 
+  @Get()
+  async getUserGuilds(
+    @User() user: JwtPayload,
+  ): Promise<ApiResponse<GuildListResponse>> {
+    const guilds = await this.guildService.getUserGuilds(user.sub);
+    return {
+      data: {
+        guilds: guilds.map((g) => this.guildService.toGuildResponse(g)),
+      },
+      statusCode: HttpStatus.OK,
+    };
+  }
+
   @Get(':guildId')
+  @UseGuards(PermissionGuard)
   async getGuild(
     @Param('guildId') guildId: string,
   ): Promise<ApiResponse<GuildResponse>> {
@@ -59,7 +79,22 @@ export class GuildController {
     };
   }
 
+  @Get(':guildId/channels')
+  @UseGuards(PermissionGuard)
+  async getGuildChannels(
+    @Param('guildId') guildId: string,
+  ): Promise<ApiResponse<ChannelListResponse>> {
+    const channels = await this.channelService.getGuildChannels(guildId);
+    return {
+      data: {
+        channels: channels.map((c) => this.channelService.toChannelResponse(c)),
+      },
+      statusCode: HttpStatus.OK,
+    };
+  }
+
   @Post(':guildId/roles')
+  @UseGuards(PermissionGuard)
   @RequirePermissions(PERMISSIONS.MANAGE_ROLES)
   async createRole(
     @Param('guildId') guildId: string,
@@ -74,6 +109,7 @@ export class GuildController {
   }
 
   @Patch(':guildId/roles/:roleId')
+  @UseGuards(PermissionGuard)
   @RequirePermissions(PERMISSIONS.MANAGE_ROLES)
   async updateRole(
     @User() user: JwtPayload,
@@ -97,6 +133,7 @@ export class GuildController {
   }
 
   @Delete(':guildId/roles/:roleId')
+  @UseGuards(PermissionGuard)
   @RequirePermissions(PERMISSIONS.MANAGE_ROLES)
   async deleteRole(
     @Param('guildId') guildId: string,

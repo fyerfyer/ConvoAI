@@ -23,7 +23,7 @@ import {
   ChannelResponse,
 } from '@discord-platform/shared';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
-import { HttpStatus, UsePipes } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { User } from '../../common/decorators/user.decorator';
 
 @Controller('channels')
@@ -33,11 +33,11 @@ export class ChannelController {
 
   @Post()
   @RequirePermissions(PERMISSIONS.MANAGE_GUILD)
-  @UsePipes(new ZodValidationPipe(createChannelSchema))
   async createChannel(
     @User() user: JwtPayload,
     @Query('guildId') guildId: string,
-    @Body() createChannelDTO: CreateChannelDTO,
+    @Body(new ZodValidationPipe(createChannelSchema))
+    createChannelDTO: CreateChannelDTO,
   ): Promise<ApiResponse<ChannelResponse>> {
     const channel = await this.channelService.createChannel(
       guildId,
@@ -53,11 +53,11 @@ export class ChannelController {
 
   @Patch(':channelId')
   @RequirePermissions(PERMISSIONS.MANAGE_GUILD)
-  @UsePipes(new ZodValidationPipe(updateChannelSchema))
   async updateChannel(
     @User() user: JwtPayload,
     @Param('channelId') channelId: string,
-    @Body() updateChannelDTO: UpdateChannelDTO,
+    @Body(new ZodValidationPipe(updateChannelSchema))
+    updateChannelDTO: UpdateChannelDTO,
   ): Promise<ApiResponse<ChannelResponse>> {
     const channel = await this.channelService.updateChannel(
       channelId,

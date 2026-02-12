@@ -16,6 +16,7 @@ import {
   RedisKeys,
   CACHE_TTL,
 } from '../../common/constants/redis-keys.constant';
+import { AppLogger } from '../../common/configs/logger/logger.service';
 
 // @everyone 当前统一方案
 // Member.roles不包含@everyone
@@ -27,7 +28,10 @@ export class MemberService {
     @InjectModel(Guild.name) private readonly guildModel: GuildModel,
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
     @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
-  ) {}
+    private readonly logger: AppLogger,
+  ) {
+    this.logger.setContext(MemberService.name);
+  }
 
   private getGuildPermKey(
     guildId: string,
@@ -52,6 +56,7 @@ export class MemberService {
   // 通过自增 Guild 权限版本号，废弃所有旧权限缓存
   async invalidateGuildPermissions(guildId: string): Promise<void> {
     await this.redisClient.incr(RedisKeys.guildPermVersion(guildId));
+    this.logger.log('Guild permissions invalidated', { guildId });
   }
 
   // 清除某个用户在某个 Guild 下的所有权限缓存
@@ -85,6 +90,7 @@ export class MemberService {
     nickName?: string,
     session?: ClientSession,
   ): Promise<MemberDocument> {
+    this.logger.log('Adding member to guild', { guildId, userId });
     const guildObjectId = new Types.ObjectId(guildId);
     const userObjectId = new Types.ObjectId(userId);
     const guildPromise = this.guildModel
@@ -106,10 +112,12 @@ export class MemberService {
     ]);
 
     if (!guild) {
+      this.logger.warn('Guild not found for adding member', { guildId });
       throw new NotFoundException('Guild not found');
     }
 
     if (existingMember) {
+      this.logger.log('Member already exists in guild', { guildId, userId });
       return existingMember;
     }
 
@@ -131,6 +139,11 @@ export class MemberService {
     // member.roles.push(everyoneRole._id);
 
     await member.save({ session });
+    this.logger.log('Member added to guild successfully', {
+      guildId,
+      userId,
+      memberId: member._id.toString(),
+    });
 
     return member;
   }
@@ -140,6 +153,7 @@ export class MemberService {
     userId: string,
     session?: ClientSession,
   ): Promise<void> {
+    this.logger.log('Removing member from guild', { guildId, userId });
     const guildObjectId = new Types.ObjectId(guildId);
     const userObjectId = new Types.ObjectId(userId);
 
@@ -150,6 +164,10 @@ export class MemberService {
       },
       { session },
     );
+    this.logger.log('Member removed from guild successfully', {
+      guildId,
+      userId,
+    });
   }
 
   async getUserMembers(
@@ -234,11 +252,13 @@ export class MemberService {
     );
 
     if (!updatedMember) {
+      this.logger.warn('Member not found for adding role', { guildId, userId });
       throw new NotFoundException('Member not found in guild');
     }
 
     // 立即清除该用户的缓存
     await this.invalidateUserPermissions(guildId, userId);
+    this.logger.log('Role added to member', { guildId, userId, roleId });
 
     return updatedMember;
   }
@@ -259,11 +279,16 @@ export class MemberService {
       { new: true, session },
     );
     if (!updatedMember) {
+      this.logger.warn('Member not found for removing role', {
+        guildId,
+        userId,
+      });
       throw new NotFoundException('Member not found in guild');
     }
 
     // 立即清除该用户的缓存
     await this.invalidateUserPermissions(guildId, userId);
+    this.logger.log('Role removed from member', { guildId, userId, roleId });
 
     return updatedMember;
   }
@@ -280,6 +305,7 @@ export class MemberService {
 
     const cached = await this.redisClient.get(cacheKey);
     if (cached) {
+      this.logger.log('Permission cache hit', { guildId, userId, channelId });
       return parseInt(cached, 10);
     }
 
@@ -316,12 +342,21 @@ export class MemberService {
     ]);
 
     if (!guild) {
+      this.logger.warn('Guild not found for permission calculation', {
+        guildId,
+      });
       throw new NotFoundException('Guild not found');
     }
+
+    console.log('guild owner', guild.owner.toString(), 'userId', userId);
 
     // 如果是 owner 直接赋予管理员权限
     // 这样创建 guild 过程中即使没将 owner 加入 member 表也有权限
     if (guild.owner.toString() === userId) {
+      this.logger.log('Owner detected, granting admin permissions', {
+        guildId,
+        userId,
+      });
       await this.redisClient.set(
         cacheKey,
         PERMISSIONS.ADMINISTRATOR.toString(),
@@ -333,6 +368,10 @@ export class MemberService {
 
     if (!member) {
       // 如果成员不在服务器中，则没有权限
+      this.logger.log('Member not found in guild, no permissions', {
+        guildId,
+        userId,
+      });
       await this.redisClient.set(cacheKey, '0', 'EX', CACHE_TTL.PERMISSIONS);
       return 0;
     }
@@ -428,6 +467,12 @@ export class MemberService {
       'EX',
       CACHE_TTL.PERMISSIONS,
     );
+    this.logger.log('Permissions calculated and cached', {
+      guildId,
+      userId,
+      channelId,
+      permissions,
+    });
     return permissions;
   }
 

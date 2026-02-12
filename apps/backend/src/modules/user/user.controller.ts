@@ -7,7 +7,6 @@ import {
   Patch,
   Request,
   UseGuards,
-  UsePipes,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import {
@@ -38,10 +37,9 @@ export class UserController {
   }
 
   @Patch('me')
-  @UsePipes(new ZodValidationPipe(updateUserSchema))
   async updateProfile(
     @Request() req: { user: JwtPayload },
-    @Body() updateDTO: UpdateUserDTO,
+    @Body(new ZodValidationPipe(updateUserSchema)) updateDTO: UpdateUserDTO,
   ): Promise<ApiResponse<UserResponse>> {
     const user = await this.userService.updateUser(req.user.sub, updateDTO);
     return {

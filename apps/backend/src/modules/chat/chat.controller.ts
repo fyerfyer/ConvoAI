@@ -7,7 +7,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UsePipes,
 } from '@nestjs/common';
 import { JwtGuard } from '../../common/guards/jwt.guard';
 import { ChatService } from './chat.service';
@@ -28,10 +27,10 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post()
-  @UsePipes(new ZodValidationPipe(createMessageDTOSchema))
   async createMessage(
     @User() user: JwtPayload,
-    @Body() createMessageDTO: CreateMessageDTO,
+    @Body(new ZodValidationPipe(createMessageDTOSchema))
+    createMessageDTO: CreateMessageDTO,
   ): Promise<ApiResponse<MessageResponse>> {
     const message = await this.chatService.createMessage(
       user.sub,

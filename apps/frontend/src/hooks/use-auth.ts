@@ -9,9 +9,7 @@ import {
   AuthResponse,
 } from '@discord-platform/shared';
 
-/**
- * Hook for login mutation
- */
+// Login
 export function useLogin() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
@@ -30,9 +28,7 @@ export function useLogin() {
   });
 }
 
-/**
- * Hook for register mutation
- */
+// Register
 export function useRegister() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
@@ -52,9 +48,7 @@ export function useRegister() {
   });
 }
 
-/**
- * Hook for logout mutation
- */
+// Logout
 export function useLogout() {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
@@ -75,16 +69,12 @@ export function useLogout() {
   });
 }
 
-/**
- * Hook to check if user is authenticated
- */
+// Authenticate check
 export function useIsAuthenticated() {
   return useAuthStore((state) => state.isAuthenticated);
 }
 
-/**
- * Hook to get current user
- */
+// Get current user
 export function useCurrentUser() {
   return useAuthStore((state) => state.user);
 }

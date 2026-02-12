@@ -17,6 +17,7 @@ import {
 } from '@discord-platform/shared';
 import { ChannelService } from '../channel/channel.service';
 import { Member, MemberModel } from '../member/schemas/member.schema';
+import { AppLogger } from '../../common/configs/logger/logger.service';
 
 @Injectable()
 export class GuildService {
@@ -26,9 +27,13 @@ export class GuildService {
     @InjectConnection() private readonly connection: Connection,
     private readonly memberService: MemberService,
     private readonly channelService: ChannelService,
-  ) {}
+    private readonly logger: AppLogger,
+  ) {
+    this.logger.setContext(GuildService.name);
+  }
 
   async createGuild(name: string, ownerId: string): Promise<GuildDocument> {
+    this.logger.log('Creating new guild', { name, ownerId });
     const session = await this.connection.startSession();
     session.startTransaction();
     try {
@@ -39,6 +44,10 @@ export class GuildService {
       });
 
       await guild.save({ session });
+      this.logger.log('Guild created successfully', {
+        guildId: guild._id.toString(),
+        name,
+      });
 
       const generalChannel = await this.channelService.createChannel(
         guild._id.toString(),
@@ -62,11 +71,22 @@ export class GuildService {
       );
 
       await session.commitTransaction();
+      this.logger.log('Guild creation completed', {
+        guildId: guild._id.toString(),
+      });
       return guild;
     } catch (error) {
       await session.abortTransaction();
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(
+        'Failed to create guild',
+        { name, ownerId, error: errorMessage },
+        errorStack,
+      );
       throw new InternalServerErrorException(
-        `Create guild failed: ${error.message}`,
+        `Create guild failed: ${errorMessage}`,
       );
     } finally {
       await session.endSession();
@@ -89,6 +109,7 @@ export class GuildService {
     roleData: CreateRoleDTO,
     session?: ClientSession,
   ): Promise<GuildDocument> {
+    this.logger.log('Creating role', { guildId, roleName: roleData.name });
     const MAX_RETRIES = 5;
     let attempt = 0;
 
@@ -96,6 +117,7 @@ export class GuildService {
       try {
         const guild = await this.guildModel.findById(guildId).session(session);
         if (!guild) {
+          this.logger.warn('Guild not found for role creation', { guildId });
           throw new NotFoundException('Guild not found');
         }
 
@@ -120,15 +142,38 @@ export class GuildService {
 
         guild.roles.push(newRole);
         await guild.save({ session });
+        this.logger.log('Role created successfully', {
+          guildId,
+          roleName: roleData.name,
+        });
         return guild;
       } catch (error) {
-        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+        if (
+          error instanceof Error &&
+          error.name === 'VersionError' &&
+          attempt < MAX_RETRIES - 1
+        ) {
           attempt++;
+          this.logger.warn('Version conflict, retrying role creation', {
+            guildId,
+            attempt,
+          });
           continue;
         }
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        this.logger.error(
+          'Failed to create role',
+          { guildId, roleData, error: errorMessage },
+          errorStack,
+        );
         throw error;
       }
     }
+    throw new InternalServerErrorException(
+      'Failed to create role after max retries',
+    );
   }
 
   async updateRole(
@@ -188,16 +233,40 @@ export class GuildService {
 
         // 修改 Role 权限，升级整个 Guild 的权限版本号，废弃所有旧缓存
         await this.memberService.invalidateGuildPermissions(guildId);
+        this.logger.log('Role updated and permissions invalidated', {
+          guildId,
+          roleId,
+        });
 
         return guild;
       } catch (error) {
-        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+        if (
+          error instanceof Error &&
+          error.name === 'VersionError' &&
+          attempt < MAX_RETRIES - 1
+        ) {
           attempt++;
+          this.logger.warn('Version conflict, retrying role update', {
+            guildId,
+            roleId,
+            attempt,
+          });
           continue;
         }
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        this.logger.error(
+          'Failed to update role',
+          { guildId, roleId, error: errorMessage },
+          errorStack,
+        );
         throw error;
       }
     }
+    throw new InternalServerErrorException(
+      'Failed to update role after max retries',
+    );
   }
 
   async deleteRole(
@@ -245,16 +314,40 @@ export class GuildService {
 
         // 删除 Role，升级整个 Guild 的权限版本号
         await this.memberService.invalidateGuildPermissions(guildId);
+        this.logger.log('Role deleted and permissions invalidated', {
+          guildId,
+          roleId,
+        });
 
         return guild;
       } catch (error) {
-        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+        if (
+          error instanceof Error &&
+          error.name === 'VersionError' &&
+          attempt < MAX_RETRIES - 1
+        ) {
           attempt++;
+          this.logger.warn('Version conflict, retrying role deletion', {
+            guildId,
+            roleId,
+            attempt,
+          });
           continue;
         }
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        this.logger.error(
+          'Failed to delete role',
+          { guildId, roleId, error: errorMessage },
+          errorStack,
+        );
         throw error;
       }
     }
+    throw new InternalServerErrorException(
+      'Failed to delete role after max retries',
+    );
   }
 
   async getMemberHigestRolePosition(
@@ -299,6 +392,19 @@ export class GuildService {
     }
 
     return highestPosition;
+  }
+
+  async getUserGuilds(userId: string): Promise<GuildDocument[]> {
+    const userObjectId = new Types.ObjectId(userId);
+    const members = await this.memberModel
+      .find({ user: userObjectId })
+      .select('guild')
+      .lean();
+
+    const guildIds = members.map((m) => new Types.ObjectId(m.guild.toString()));
+    if (guildIds.length === 0) return [];
+
+    return this.guildModel.find({ _id: { $in: guildIds } });
   }
 
   toGuildResponse(guild: GuildDocument) {

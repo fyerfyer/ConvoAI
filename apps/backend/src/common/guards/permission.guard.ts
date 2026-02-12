@@ -69,7 +69,7 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException('Guild not found');
     }
 
-    if (guild._id.toString() === user.sub) {
+    if (guild.owner.toString() === user.sub) {
       return true;
     }
 

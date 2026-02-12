@@ -20,13 +20,17 @@ import {
 } from '@discord-platform/shared';
 import { ClientSession, Types } from 'mongoose';
 import { MemberService } from '../member/member.service';
+import { AppLogger } from '../../common/configs/logger/logger.service';
 
 @Injectable()
 export class ChannelService {
   constructor(
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
     private readonly memberService: MemberService,
-  ) {}
+    private readonly logger: AppLogger,
+  ) {
+    this.logger.setContext(ChannelService.name);
+  }
 
   async createChannel(
     guildId: string,
@@ -34,6 +38,11 @@ export class ChannelService {
     createChannelDTO: CreateChannelDTO,
     session?: ClientSession,
   ): Promise<ChannelDocument> {
+    this.logger.log('Creating channel', {
+      guildId,
+      userId,
+      channelName: createChannelDTO.name,
+    });
     const guildObjectId = new Types.ObjectId(guildId);
     const permissions = await this.memberService.getMemberPermissions(
       guildId,
@@ -43,6 +52,10 @@ export class ChannelService {
     );
 
     if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
+      this.logger.warn('Permission denied for channel creation', {
+        guildId,
+        userId,
+      });
       throw new ForbiddenException(
         'You do not have permission to create channels',
       );
@@ -83,7 +96,13 @@ export class ChannelService {
       position: 0,
     });
 
-    return channel.save({ session });
+    const savedChannel = await channel.save({ session });
+    this.logger.log('Channel created successfully', {
+      guildId,
+      channelId: savedChannel._id.toString(),
+      channelName: savedChannel.name,
+    });
+    return savedChannel;
   }
 
   async getChannelById(
@@ -172,8 +191,17 @@ export class ChannelService {
       } catch (error) {
         if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
           attempt++;
+          this.logger.warn('Version conflict, retrying channel update', {
+            channelId,
+            attempt,
+          });
           continue;
         }
+        this.logger.error(
+          'Failed to update channel',
+          { channelId, error: error.message },
+          error.stack,
+        );
         throw error;
       }
     }
@@ -184,10 +212,12 @@ export class ChannelService {
     userId: string,
     session?: ClientSession,
   ) {
+    this.logger.log('Deleting channel', { channelId, userId });
     const channel = await this.channelModel
       .findById(channelId)
       .session(session);
     if (!channel) {
+      this.logger.warn('Channel not found for deletion', { channelId });
       throw new NotFoundException('Channel not found');
     }
 
@@ -198,12 +228,17 @@ export class ChannelService {
       session,
     );
     if (!PermissionUtil.has(permissions, PERMISSIONS.MANAGE_GUILD)) {
+      this.logger.warn('Permission denied for channel deletion', {
+        channelId,
+        userId,
+      });
       throw new ForbiddenException(
         'You do not have permission to delete channels',
       );
     }
 
     await this.channelModel.findByIdAndDelete(channelId).session(session);
+    this.logger.log('Channel deleted successfully', { channelId });
   }
 
   async addPermissionOverwrite(
@@ -255,13 +290,26 @@ export class ChannelService {
         await this.memberService.invalidateGuildPermissions(
           (channel.guild as Types.ObjectId).toString(),
         );
+        this.logger.log('Permission overwrite added', {
+          channelId,
+          targetId: permissionOverwriteDTO.id,
+        });
 
         return channel;
       } catch (error) {
         if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
           attempt++;
+          this.logger.warn('Version conflict, retrying permission overwrite', {
+            channelId,
+            attempt,
+          });
           continue;
         }
+        this.logger.error(
+          'Failed to add permission overwrite',
+          { channelId, error: error.message },
+          error.stack,
+        );
         throw error;
       }
     }
