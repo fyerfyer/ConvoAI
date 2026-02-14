@@ -49,7 +49,9 @@ export default function CreateGuildDialog({
       const guild = await createGuildMutation.mutateAsync(data);
       reset();
       onOpenChange(false);
-      router.push(`/app/guilds/${guild.id}`);
+      if (guild) {
+        router.push(`/app/guilds/${guild.id}`);
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error

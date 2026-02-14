@@ -10,7 +10,9 @@ export class WsJwtGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const client: Socket = context.switchToWs().getClient();
     const token =
-      this.extractTokenFromHeader(client) || this.extractTokenFromQuery(client);
+      this.extractTokenFromAuth(client) ||
+      this.extractTokenFromHeader(client) ||
+      this.extractTokenFromQuery(client);
     if (!token) {
       return false;
     }
@@ -22,6 +24,11 @@ export class WsJwtGuard implements CanActivate {
     } catch {
       return false;
     }
+  }
+
+  private extractTokenFromAuth(client: Socket): string | undefined {
+    const token = client.handshake.auth?.token;
+    return typeof token === 'string' ? token : undefined;
   }
 
   private extractTokenFromHeader(client: Socket): string | undefined {

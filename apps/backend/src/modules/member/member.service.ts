@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Member, MemberDocument, MemberModel } from './schemas/member.schema';
 import { Guild, GuildModel } from '../guild/schemas/guild.schema';
@@ -40,6 +45,13 @@ export class MemberService {
     channelId?: string,
   ): string {
     return RedisKeys.userPermission(guildId, version, userId, channelId);
+  }
+
+  private toObjectId(value: string, fieldName: string): Types.ObjectId {
+    if (!Types.ObjectId.isValid(value)) {
+      throw new BadRequestException(`Invalid ${fieldName}`);
+    }
+    return new Types.ObjectId(value);
   }
 
   private async getGuildPermVersion(guildId: string): Promise<string> {
@@ -91,20 +103,25 @@ export class MemberService {
     session?: ClientSession,
   ): Promise<MemberDocument> {
     this.logger.log('Adding member to guild', { guildId, userId });
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
-    const guildPromise = this.guildModel
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+    const guildQuery = this.guildModel
       .findById(guildObjectId)
       .select('_id')
-      .lean()
-      .session(session);
+      .lean();
+    if (session) {
+      guildQuery.session(session);
+    }
+    const guildPromise = guildQuery;
 
-    const existingMemberPromise = this.memberModel
-      .findOne({
-        guild: guildObjectId,
-        user: userObjectId,
-      })
-      .session(session);
+    const existingMemberQuery = this.memberModel.findOne({
+      guild: guildObjectId,
+      user: userObjectId,
+    });
+    if (session) {
+      existingMemberQuery.session(session);
+    }
+    const existingMemberPromise = existingMemberQuery;
 
     const [guild, existingMember] = await Promise.all([
       guildPromise,
@@ -154,8 +171,8 @@ export class MemberService {
     session?: ClientSession,
   ): Promise<void> {
     this.logger.log('Removing member from guild', { guildId, userId });
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
 
     await this.memberModel.deleteOne(
       {
@@ -174,15 +191,15 @@ export class MemberService {
     guildId: string,
     userId: string,
   ): Promise<MemberDocument[]> {
-    const userObjectId = new Types.ObjectId(userId);
-    const guildObjectId = new Types.ObjectId(guildId);
+    const userObjectId = this.toObjectId(userId, 'userId');
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
     return this.memberModel
       .find({ user: userObjectId, guild: guildObjectId })
       .populate('user');
   }
 
   async getGuildMembers(guildId: string): Promise<MemberDocument[]> {
-    const guildObjectId = new Types.ObjectId(guildId);
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
     return this.memberModel.find({ guild: guildObjectId }).populate('user');
   }
 
@@ -192,14 +209,17 @@ export class MemberService {
     nickname: string,
     session?: ClientSession,
   ): Promise<MemberDocument> {
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
 
-    const guild = await this.guildModel
+    const guildQuery = this.guildModel
       .findById(guildObjectId)
       .select('_id')
-      .lean()
-      .session(session);
+      .lean();
+    if (session) {
+      guildQuery.session(session);
+    }
+    const guild = await guildQuery;
     if (!guild) {
       throw new NotFoundException('Guild not found');
     }
@@ -225,15 +245,18 @@ export class MemberService {
     roleId: string,
     session?: ClientSession,
   ): Promise<MemberDocument> {
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
-    const roleObjectId = new Types.ObjectId(roleId);
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+    const roleObjectId = this.toObjectId(roleId, 'roleId');
 
-    const guild = await this.guildModel
+    const guildQuery = this.guildModel
       .findById(guildObjectId)
       .select('roles')
-      .lean()
-      .session(session);
+      .lean();
+    if (session) {
+      guildQuery.session(session);
+    }
+    const guild = await guildQuery;
     if (!guild) {
       throw new NotFoundException('Guild not found');
     }
@@ -269,9 +292,9 @@ export class MemberService {
     roleId: string,
     session?: ClientSession,
   ): Promise<MemberDocument> {
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
-    const roleObjectId = new Types.ObjectId(roleId);
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+    const roleObjectId = this.toObjectId(roleId, 'roleId');
 
     const updatedMember = await this.memberModel.findOneAndUpdate(
       { guild: guildObjectId, user: userObjectId },
@@ -309,31 +332,47 @@ export class MemberService {
       return parseInt(cached, 10);
     }
 
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
-    const channelObjectId = channelId ? new Types.ObjectId(channelId) : null;
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+    const channelObjectId = channelId
+      ? this.toObjectId(channelId, 'channelId')
+      : null;
 
     // 使用 .lean() 获取纯 JSON 对象，.select() 只获取需要的字段
-    const guildPromise = this.guildModel
+    const guildQuery = this.guildModel
       .findById(guildObjectId)
       .select('roles owner')
-      .lean()
-      .session(session);
-    const memberPromise = this.memberModel
+      .lean();
+    if (session) {
+      guildQuery.session(session);
+    }
+    const guildPromise = guildQuery;
+
+    const memberQuery = this.memberModel
       .findOne({
         guild: guildObjectId,
         user: userObjectId,
       })
       .select('roles')
-      .lean()
-      .session(session);
-    const channelPromise = channelObjectId
-      ? this.channelModel
-          .findById(channelObjectId)
-          .select('permissionOverwrites')
-          .lean()
-          .session(session)
-      : Promise.resolve(null);
+      .lean();
+    if (session) {
+      memberQuery.session(session);
+    }
+    const memberPromise = memberQuery;
+
+    let channelPromise: Promise<any>;
+    if (channelObjectId) {
+      const query = this.channelModel
+        .findById(channelObjectId)
+        .select('permissionOverwrites')
+        .lean();
+      if (session) {
+        query.session(session);
+      }
+      channelPromise = query;
+    } else {
+      channelPromise = Promise.resolve(null);
+    }
 
     const [guild, member, channel] = await Promise.all([
       guildPromise,
@@ -348,11 +387,10 @@ export class MemberService {
       throw new NotFoundException('Guild not found');
     }
 
-    console.log('guild owner', guild.owner.toString(), 'userId', userId);
-
     // 如果是 owner 直接赋予管理员权限
     // 这样创建 guild 过程中即使没将 owner 加入 member 表也有权限
-    if (guild.owner.toString() === userId) {
+    const guildOwnerId = guild.owner?.toString();
+    if (guildOwnerId === userId) {
       this.logger.log('Owner detected, granting admin permissions', {
         guildId,
         userId,
@@ -419,7 +457,7 @@ export class MemberService {
       let everyoneRoleDeny = 0;
       if (everyoneRole) {
         const overwrite = channel.permissionOverwrites.find(
-          (ow) =>
+          (ow: any) =>
             ow.id === everyoneRole._id.toString() &&
             ow.type === PERMISSIONOVERWRITE.ROLE,
         );
@@ -435,7 +473,7 @@ export class MemberService {
       // 聚合所有角色的 Allow 和 Deny
       for (const roleId of member.roles) {
         const overwrite = channel.permissionOverwrites.find(
-          (ow) =>
+          (ow: any) =>
             ow.id === roleId.toString() && ow.type === PERMISSIONOVERWRITE.ROLE,
         );
 
@@ -452,7 +490,7 @@ export class MemberService {
 
       // 用户单独的覆盖
       const memberOverwrite = channel.permissionOverwrites.find(
-        (ow) => ow.id === userId && ow.type === PERMISSIONOVERWRITE.MEMBER,
+        (ow: any) => ow.id === userId && ow.type === PERMISSIONOVERWRITE.MEMBER,
       );
 
       if (memberOverwrite) {
@@ -481,26 +519,23 @@ export class MemberService {
     userId: string,
     session?: ClientSession,
   ): Promise<boolean> {
-    const guildObjectId = new Types.ObjectId(guildId);
-    const userObjectId = new Types.ObjectId(userId);
-    const member = await this.memberModel
-      .findOne({
-        guild: guildObjectId,
-        user: userObjectId,
-      })
-      .session(session);
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+    const memberQuery = this.memberModel.findOne({
+      guild: guildObjectId,
+      user: userObjectId,
+    });
+    if (session) {
+      memberQuery.session(session);
+    }
+    const member = await memberQuery;
 
     return !!member;
   }
 
   public toMemberResponse(member: MemberDocument) {
-    let userId: string;
+    let userId = '';
     let userDetails = null;
-
-    if (!member.user) {
-      // Handle the case where user is not populated
-      throw new Error('Member user field is not populated or is null');
-    }
 
     if (member.user instanceof Document) {
       const userDoc = member.user as UserDocument;
@@ -510,8 +545,13 @@ export class MemberService {
         name: userDoc.name,
         avatar: userDoc.avatar,
       };
-    } else {
+    } else if (member.user) {
       userId = member.user.toString();
+    } else {
+      this.logger.warn('Member user relation is missing', {
+        memberId: member._id.toString(),
+        guildId: (member.guild as Types.ObjectId).toString(),
+      });
     }
 
     const response = {

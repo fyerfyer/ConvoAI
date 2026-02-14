@@ -17,12 +17,32 @@ export interface GuildResponse {
   name: string;
   icon?: string;
   ownerId: string;
+  memberCount?: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface GuildListResponse {
   guilds: GuildResponse[];
+}
+
+export interface GuildSearchResponse {
+  guilds: GuildResponse[];
+  total: number;
+}
+
+export interface InviteResponse {
+  code: string;
+  guild: GuildResponse;
+  inviter: { id: string; name: string };
+  uses: number;
+  maxUses: number;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface InviteListResponse {
+  invites: InviteResponse[];
 }
 
 export interface ChannelResponse {
@@ -69,6 +89,17 @@ export interface AttachmentResponse {
   size: number;
 }
 
+export interface EmbedFieldResponse {
+  name: string;
+  value: string;
+  inline?: boolean;
+}
+
+export interface EmbedFooterResponse {
+  text: string;
+  icon_url?: string;
+}
+
 export interface EmbedResponse {
   title?: string;
   description?: string;
@@ -76,6 +107,9 @@ export interface EmbedResponse {
   color?: number;
   image?: { url: string };
   thumbnail?: { url: string };
+  fields?: EmbedFieldResponse[];
+  footer?: EmbedFooterResponse;
+  timestamp?: string;
 }
 
 export interface MessageResponse {

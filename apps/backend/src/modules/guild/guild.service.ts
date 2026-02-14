@@ -7,23 +7,29 @@ import {
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Types } from 'mongoose';
 import { Guild, GuildDocument, GuildModel } from './schemas/guild.schema';
+import { Invite, InviteModel } from './schemas/invite.schema';
 import { Role } from './schemas/role.schema';
 import { MemberService } from '../member/member.service';
 import {
   CHANNEL,
   CHANNEL_NAME,
+  CreateInviteDTO,
   CreateRoleDTO,
+  DEFAULT_EVERYONE_PERMISSIONS,
+  ROLE_CONSTANTS,
   UpdateRoleDTO,
 } from '@discord-platform/shared';
 import { ChannelService } from '../channel/channel.service';
 import { Member, MemberModel } from '../member/schemas/member.schema';
 import { AppLogger } from '../../common/configs/logger/logger.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class GuildService {
   constructor(
     @InjectModel(Guild.name) private readonly guildModel: GuildModel,
     @InjectModel(Member.name) private readonly memberModel: MemberModel,
+    @InjectModel(Invite.name) private readonly inviteModel: InviteModel,
     @InjectConnection() private readonly connection: Connection,
     private readonly memberService: MemberService,
     private readonly channelService: ChannelService,
@@ -101,6 +107,24 @@ export class GuildService {
     if (!guild) {
       throw new NotFoundException('Guild not found');
     }
+
+    // TODO：everyone 角色好像有些问题，这里先手动检查注入
+    const hasEveryoneRole = guild.roles.some(
+      (role) => role.name === ROLE_CONSTANTS.EVERYONE,
+    );
+
+    if (!hasEveryoneRole) {
+      guild.roles.push({
+        name: ROLE_CONSTANTS.EVERYONE,
+        permissions: DEFAULT_EVERYONE_PERMISSIONS,
+        color: '#99AAB5',
+        position: 0,
+        hoist: false,
+        mentionable: false,
+      });
+      await guild.save({ session });
+    }
+
     return guild;
   }
 
@@ -416,5 +440,138 @@ export class GuildService {
       createdAt: guild.createdAt.toISOString(),
       updatedAt: guild.updatedAt.toISOString(),
     };
+  }
+
+  async toGuildResponseWithMemberCount(guild: GuildDocument) {
+    const memberCount = await this.memberModel.countDocuments({
+      guild: guild._id,
+    });
+    return {
+      ...this.toGuildResponse(guild),
+      memberCount,
+    };
+  }
+
+  // ─── Guild Search ──────────────────────────────────────────
+
+  async searchGuilds(
+    query: string,
+    limit = 20,
+    offset = 0,
+  ): Promise<{ guilds: GuildDocument[]; total: number }> {
+    const filter = {
+      name: { $regex: query, $options: 'i' },
+    };
+    const [guilds, total] = await Promise.all([
+      this.guildModel.find(filter).skip(offset).limit(limit).sort({ name: 1 }),
+      this.guildModel.countDocuments(filter),
+    ]);
+    return { guilds, total };
+  }
+
+  // ─── Join Guild ────────────────────────────────────────────
+
+  async joinGuild(guildId: string, userId: string) {
+    this.logger.log('User joining guild', { guildId, userId });
+    const guild = await this.getGuildById(guildId);
+    const isMember = await this.memberService.isMemberInGuild(guildId, userId);
+    if (isMember) {
+      throw new BadRequestException('You are already a member of this guild');
+    }
+    await this.memberService.addMemberToGuild(guildId, userId);
+    this.logger.log('User joined guild successfully', { guildId, userId });
+    return guild;
+  }
+
+  // ─── Invite System ─────────────────────────────────────────
+
+  private generateInviteCode(): string {
+    return crypto.randomBytes(4).toString('hex');
+  }
+
+  async createInvite(guildId: string, inviterId: string, dto: CreateInviteDTO) {
+    const guild = await this.getGuildById(guildId);
+
+    const code = this.generateInviteCode();
+    const expiresAt =
+      dto.maxAge && dto.maxAge > 0
+        ? new Date(Date.now() + dto.maxAge * 1000)
+        : null;
+
+    const invite = new this.inviteModel({
+      code,
+      guild: guild._id,
+      inviter: new Types.ObjectId(inviterId),
+      maxUses: dto.maxUses || 0,
+      expiresAt,
+    });
+
+    await invite.save();
+    this.logger.log('Invite created', { guildId, code });
+    return invite;
+  }
+
+  async getGuildInvites(guildId: string) {
+    return this.inviteModel
+      .find({ guild: new Types.ObjectId(guildId) })
+      .populate('inviter', 'name avatar')
+      .populate('guild')
+      .sort({ createdAt: -1 });
+  }
+
+  async getInviteByCode(code: string) {
+    const invite = await this.inviteModel
+      .findOne({ code })
+      .populate('inviter', 'name avatar')
+      .populate('guild');
+
+    if (!invite) {
+      throw new NotFoundException('Invite not found or expired');
+    }
+
+    // Check expiration
+    if (invite.expiresAt && invite.expiresAt < new Date()) {
+      await invite.deleteOne();
+      throw new BadRequestException('This invite has expired');
+    }
+
+    // Check max uses
+    if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+      throw new BadRequestException(
+        'This invite has reached its maximum number of uses',
+      );
+    }
+
+    return invite;
+  }
+
+  async useInvite(code: string, userId: string) {
+    const invite = await this.getInviteByCode(code);
+    const guildId = invite.guild._id.toString();
+
+    const isMember = await this.memberService.isMemberInGuild(guildId, userId);
+    if (isMember) {
+      throw new BadRequestException('You are already a member of this guild');
+    }
+
+    await this.memberService.addMemberToGuild(guildId, userId);
+
+    invite.uses += 1;
+    await invite.save();
+
+    this.logger.log('Invite used', { code, userId, guildId });
+
+    const guild = await this.getGuildById(guildId);
+    return guild;
+  }
+
+  async deleteInvite(guildId: string, code: string) {
+    const result = await this.inviteModel.deleteOne({
+      code,
+      guild: new Types.ObjectId(guildId),
+    });
+    if (result.deletedCount === 0) {
+      throw new NotFoundException('Invite not found');
+    }
   }
 }

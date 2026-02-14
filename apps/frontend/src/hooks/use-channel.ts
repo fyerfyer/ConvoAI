@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api-client';
 import { useAuthStore } from '../stores/auth-store';
+import { toast } from './use-toast';
 import {
   ApiResponse,
   ChannelResponse,
@@ -8,6 +9,19 @@ import {
   CreateChannelDTO,
   UpdateChannelDTO,
 } from '@discord-platform/shared';
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+  return fallback;
+}
 
 // Channel query keys
 export const channelKeys = {
@@ -57,6 +71,13 @@ export function useCreateChannel() {
         queryKey: channelKeys.byGuild(variables.guildId),
       });
     },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Create Channel Failed',
+        description: getErrorMessage(error, 'Unable to create channel.'),
+      });
+    },
   });
 }
 
@@ -67,6 +88,7 @@ export function useUpdateChannel() {
   return useMutation({
     mutationFn: async ({
       channelId,
+      guildId,
       data,
     }: {
       channelId: string;
@@ -74,7 +96,7 @@ export function useUpdateChannel() {
       data: UpdateChannelDTO;
     }) => {
       const response = await api.patch<ApiResponse<ChannelResponse>>(
-        `/channels/${channelId}`,
+        `/channels/${channelId}?guildId=${guildId}`,
         data,
       );
       return response.data;
@@ -82,6 +104,13 @@ export function useUpdateChannel() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: channelKeys.byGuild(variables.guildId),
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Update Channel Failed',
+        description: getErrorMessage(error, 'Unable to update channel.'),
       });
     },
   });
@@ -94,15 +123,25 @@ export function useDeleteChannel() {
   return useMutation({
     mutationFn: async ({
       channelId,
+      guildId,
     }: {
       channelId: string;
       guildId: string;
     }) => {
-      await api.delete<ApiResponse<null>>(`/channels/${channelId}`);
+      await api.delete<ApiResponse<null>>(
+        `/channels/${channelId}?guildId=${guildId}`,
+      );
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: channelKeys.byGuild(variables.guildId),
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Delete Channel Failed',
+        description: getErrorMessage(error, 'Unable to delete channel.'),
       });
     },
   });

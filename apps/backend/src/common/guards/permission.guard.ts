@@ -32,11 +32,6 @@ export class PermissionGuard implements CanActivate {
         context.getClass(),
       ]);
 
-    // 如果没有标记，直接放行
-    if (!requiredPermission) {
-      return true;
-    }
-
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -49,12 +44,21 @@ export class PermissionGuard implements CanActivate {
     try {
       const token = authHeader.slice(7);
       user = await this.jwtService.verifyAsync<JwtPayload>(token);
-    } catch (error) {
-      throw new UnauthorizedException('Invalid token', error);
+    } catch {
+      throw new UnauthorizedException('Invalid token');
     }
 
+    const params = (request.params ?? {}) as Record<string, unknown>;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    const pathParam = Array.isArray(params.path) ? params.path : [];
+
     const guildId =
-      request.params.guildId || request.body.guildId || request.query.guildId;
+      (typeof params.guildId === 'string' ? params.guildId : undefined) ||
+      (typeof body.guildId === 'string' ? body.guildId : undefined) ||
+      (typeof query.guildId === 'string' ? query.guildId : undefined) ||
+      (typeof pathParam[1] === 'string' ? pathParam[1] : undefined);
 
     if (!guildId) {
       throw new ForbiddenException(
@@ -69,15 +73,17 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException('Guild not found');
     }
 
-    if (guild.owner.toString() === user.sub) {
+    if (guild.owner?.toString() === user.sub) {
       return true;
     }
 
     const channelId =
-      request.params.channelId ||
-      request.body.channelId ||
-      request.query.channelId ||
-      null;
+      (typeof params.channelId === 'string' ? params.channelId : undefined) ||
+      (typeof body.channelId === 'string' ? body.channelId : undefined) ||
+      (typeof query.channelId === 'string' ? query.channelId : undefined) ||
+      (typeof pathParam[1] === 'string' && pathParam[0] === 'channels'
+        ? pathParam[1]
+        : undefined);
 
     const isMember = await this.memberService.isMemberInGuild(
       guildId,
@@ -88,14 +94,18 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException('You are not a member of this guild');
     }
 
+    if (!requiredPermission) {
+      return true;
+    }
+
     const permissions = await this.memberService.getMemberPermissions(
       guildId,
       user.sub,
       channelId,
     );
-    const hasPermission = PermissionUtil.has(permissions, requiredPermission);
-    if (!hasPermission) {
-      throw new ForbiddenException('Missing Permissions');
+
+    if (!PermissionUtil.has(permissions, requiredPermission)) {
+      throw new ForbiddenException('Permission denied');
     }
 
     return true;

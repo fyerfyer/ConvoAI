@@ -15,6 +15,7 @@ export interface IUserPublic {
 export interface IUserSummary {
   id: string;
   name: string;
+  nickname?: string;
   avatar: string | null;
   isBot: boolean;
 }

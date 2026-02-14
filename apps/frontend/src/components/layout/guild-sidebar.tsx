@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Home, Plus } from 'lucide-react';
+import { Home, Plus, Compass } from 'lucide-react';
 import UserSection from './user-section';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,6 +10,7 @@ import { Separator } from '../ui/separator';
 import { useGuilds } from '@/hooks/use-guild';
 import { useGuildStore } from '@/stores/guild-store';
 import CreateGuildDialog from '@/components/guild/create-guild-dialog';
+import ExploreGuildsDialog from '@/components/guild/explore-guilds-dialog';
 import { cn } from '@/lib/utils';
 
 export default function GuildSidebar() {
@@ -18,6 +19,7 @@ export default function GuildSidebar() {
   const { data: guilds, isLoading } = useGuilds();
   const setActiveGuild = useGuildStore((s) => s.setActiveGuild);
   const [createGuildOpen, setCreateGuildOpen] = useState(false);
+  const [exploreGuildsOpen, setExploreGuildsOpen] = useState(false);
 
   const activeGuildId = params?.guildId;
 
@@ -116,6 +118,17 @@ export default function GuildSidebar() {
           <Plus className="h-6 w-6 text-green-400 hover:text-white" />
         </Button>
 
+        {/* Explore Guilds Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="mb-2 h-12 w-12 rounded-2xl hover:rounded-xl transition-all bg-gray-700 hover:bg-green-500"
+          title="Explore Guilds"
+          onClick={() => setExploreGuildsOpen(true)}
+        >
+          <Compass className="h-6 w-6 text-green-400 hover:text-white" />
+        </Button>
+
         {/* User Section at bottom */}
         <UserSection />
       </div>
@@ -123,6 +136,10 @@ export default function GuildSidebar() {
       <CreateGuildDialog
         open={createGuildOpen}
         onOpenChange={setCreateGuildOpen}
+      />
+      <ExploreGuildsDialog
+        open={exploreGuildsOpen}
+        onOpenChange={setExploreGuildsOpen}
       />
     </>
   );

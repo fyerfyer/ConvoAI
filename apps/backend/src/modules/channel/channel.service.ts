@@ -69,7 +69,7 @@ export class ChannelService {
         .findById(parentObjectId)
         .select('guild type permissionOverwrites')
         .lean()
-        .session(session);
+        .session(session ?? null);
       if (!parent || !(parent.guild as Types.ObjectId).equals(guildObjectId)) {
         throw new BadRequestException('Invalid parent channel');
       }
@@ -111,7 +111,7 @@ export class ChannelService {
   ): Promise<ChannelDocument> {
     const channel = await this.channelModel
       .findById(channelId)
-      .session(session);
+      .session(session ?? null);
     if (!channel) {
       throw new NotFoundException('Channel not found');
     }
@@ -140,7 +140,7 @@ export class ChannelService {
       try {
         const channel = await this.channelModel
           .findById(channelId)
-          .session(session);
+          .session(session ?? null);
         if (!channel) {
           throw new BadRequestException('Channel not found');
         }
@@ -162,23 +162,29 @@ export class ChannelService {
         if (updateChannelDTO.topic !== undefined) {
           channel.topic = updateChannelDTO.topic;
         }
-        if (updateChannelDTO.parentId) {
-          const parentObjectId = new Types.ObjectId(updateChannelDTO.parentId);
-          const parent = await this.channelModel
-            .findById(parentObjectId)
-            .select('guild')
-            .lean()
-            .session(session);
-          if (
-            !parent ||
-            !(parent.guild as Types.ObjectId).equals(
-              channel.guild as Types.ObjectId,
-            )
-          ) {
-            throw new BadRequestException('Invalid parent channel');
-          }
+        if (updateChannelDTO.parentId !== undefined) {
+          if (updateChannelDTO.parentId === null) {
+            channel.parentId = undefined as unknown as Types.ObjectId;
+          } else {
+            const parentObjectId = new Types.ObjectId(
+              updateChannelDTO.parentId,
+            );
+            const parent = await this.channelModel
+              .findById(parentObjectId)
+              .select('guild')
+              .lean()
+              .session(session ?? null);
+            if (
+              !parent ||
+              !(parent.guild as Types.ObjectId).equals(
+                channel.guild as Types.ObjectId,
+              )
+            ) {
+              throw new BadRequestException('Invalid parent channel');
+            }
 
-          channel.parentId = parentObjectId;
+            channel.parentId = parentObjectId;
+          }
         }
         if (updateChannelDTO.userLimit !== undefined) {
           channel.userLimit = updateChannelDTO.userLimit;
@@ -189,7 +195,12 @@ export class ChannelService {
 
         return await channel.save({ session });
       } catch (error) {
-        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+        const err = error as {
+          name?: string;
+          message?: string;
+          stack?: string;
+        };
+        if (err.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
           attempt++;
           this.logger.warn('Version conflict, retrying channel update', {
             channelId,
@@ -199,12 +210,14 @@ export class ChannelService {
         }
         this.logger.error(
           'Failed to update channel',
-          { channelId, error: error.message },
-          error.stack,
+          { channelId, error: err.message ?? 'Unknown error' },
+          err.stack,
         );
-        throw error;
+        throw err;
       }
     }
+
+    throw new BadRequestException('Failed to update channel');
   }
 
   async deleteChannel(
@@ -213,9 +226,15 @@ export class ChannelService {
     session?: ClientSession,
   ) {
     this.logger.log('Deleting channel', { channelId, userId });
-    const channel = await this.channelModel
-      .findById(channelId)
-      .session(session);
+    if (!Types.ObjectId.isValid(channelId)) {
+      throw new BadRequestException('Invalid channel id');
+    }
+
+    const channelQuery = this.channelModel.findById(channelId);
+    if (session) {
+      channelQuery.session(session);
+    }
+    const channel = await channelQuery;
     if (!channel) {
       this.logger.warn('Channel not found for deletion', { channelId });
       throw new NotFoundException('Channel not found');
@@ -237,7 +256,11 @@ export class ChannelService {
       );
     }
 
-    await this.channelModel.findByIdAndDelete(channelId).session(session);
+    const deleteQuery = this.channelModel.findByIdAndDelete(channelId);
+    if (session) {
+      deleteQuery.session(session);
+    }
+    await deleteQuery;
     this.logger.log('Channel deleted successfully', { channelId });
   }
 
@@ -254,7 +277,7 @@ export class ChannelService {
       try {
         const channel = await this.channelModel
           .findById(channelId)
-          .session(session);
+          .session(session ?? null);
         if (!channel) {
           throw new NotFoundException('Channel not found');
         }
@@ -297,7 +320,12 @@ export class ChannelService {
 
         return channel;
       } catch (error) {
-        if (error.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
+        const err = error as {
+          name?: string;
+          message?: string;
+          stack?: string;
+        };
+        if (err.name === 'VersionError' && attempt < MAX_RETRIES - 1) {
           attempt++;
           this.logger.warn('Version conflict, retrying permission overwrite', {
             channelId,
@@ -307,12 +335,14 @@ export class ChannelService {
         }
         this.logger.error(
           'Failed to add permission overwrite',
-          { channelId, error: error.message },
-          error.stack,
+          { channelId, error: err.message ?? 'Unknown error' },
+          err.stack,
         );
-        throw error;
+        throw err;
       }
     }
+
+    throw new BadRequestException('Failed to add permission overwrite');
   }
 
   async checkAccess(userId: string, channelId: string): Promise<boolean> {

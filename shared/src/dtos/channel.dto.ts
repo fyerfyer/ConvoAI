@@ -26,7 +26,7 @@ export type CreateChannelDTO = z.infer<typeof createChannelSchema>;
 export const updateChannelSchema = z.object({
   name: z.string().optional(),
   topic: z.string().optional(),
-  parentId: z.string().optional(),
+  parentId: z.string().nullable().optional(),
   userLimit: z.number().min(0).optional(),
   position: z.number().min(0).optional(),
 });

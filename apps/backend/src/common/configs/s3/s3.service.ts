@@ -37,6 +37,24 @@ export class S3Service {
     return url;
   }
 
+  // 生成下载的预签名 URL
+  // 用于私有 bucket 的文件访问
+  async getGetUrl(
+    bucketName: BucketsValue,
+    objectKey: string,
+    expireTime = 3600,
+  ): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: objectKey,
+    });
+
+    const url = await getSignedUrl(this.s3PublicClient, command, {
+      expiresIn: expireTime,
+    });
+    return url;
+  }
+
   async checkPublicObjectExists(
     bucketName: BucketsValue,
     objectKey: string,
@@ -72,7 +90,6 @@ export class S3Service {
   ): Promise<void> {
     return this.deleteObject(bucketName, objectKey, this.s3InternalClient);
   }
-
   private async getObjectMetadata(
     bucketName: BucketsValue,
     objectKey: string,

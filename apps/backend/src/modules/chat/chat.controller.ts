@@ -12,6 +12,8 @@ import { JwtGuard } from '../../common/guards/jwt.guard';
 import { ChatService } from './chat.service';
 import {
   ApiResponse,
+  AttachmentPresignedUrlDTO,
+  attachmentPresignedUrlDTOSchema,
   CreateMessageDTO,
   createMessageDTOSchema,
   JwtPayload,
@@ -60,6 +62,25 @@ export class ChatController {
     return {
       data: { messages: mappedMessages },
       statusCode: HttpStatus.OK,
+    };
+  }
+
+  @Post('attachments/presign')
+  async getAttachmentPresignedUrl(
+    @User() user: JwtPayload,
+    @Param('channelId') channelId: string,
+    @Body(new ZodValidationPipe(attachmentPresignedUrlDTOSchema))
+    dto: AttachmentPresignedUrlDTO,
+  ): Promise<ApiResponse<{ uploadUrl: string; fileUrl: string; key: string }>> {
+    const result = await this.chatService.getAttachmentPresignedUrl(
+      user.sub,
+      channelId,
+      dto,
+    );
+    return {
+      data: result,
+      statusCode: HttpStatus.OK,
+      message: 'Presigned URL generated',
     };
   }
 }

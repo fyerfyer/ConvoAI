@@ -4,6 +4,7 @@ import { GuildController } from './guild.controller';
 import { Guild, guildSchema } from './schemas/guild.schema';
 import { Channel, channelSchema } from '../channel/schemas/channel.schema';
 import { Member, memberSchema } from '../member/schemas/member.schema';
+import { Invite, inviteSchema } from './schemas/invite.schema';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MemberModule } from '../member/member.module';
 import { ChannelModule } from '../channel/channel.module';
@@ -14,6 +15,7 @@ import { ChannelModule } from '../channel/channel.module';
       { name: Guild.name, schema: guildSchema },
       { name: Channel.name, schema: channelSchema },
       { name: Member.name, schema: memberSchema },
+      { name: Invite.name, schema: inviteSchema },
     ]),
     forwardRef(() => MemberModule),
     forwardRef(() => ChannelModule),

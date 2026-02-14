@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useIsAuthenticated } from '@/hooks/use-auth';
+import { useAuthStore } from '@/stores/auth-store';
 import GuildSidebar from '@/components/layout/guild-sidebar';
 import ChannelSidebar from '@/components/layout/channel-sidebar';
 
@@ -13,14 +14,17 @@ export default function MainLayout({
 }) {
   const router = useRouter();
   const isAuthenticated = useIsAuthenticated();
+  const hasHydrated = useAuthStore((s) => s._hasHydrated);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Only redirect after Zustand has rehydrated from localStorage
+    if (hasHydrated && !isAuthenticated) {
       router.replace('/login');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, hasHydrated, router]);
 
-  if (!isAuthenticated) {
+  // Show loading while hydrating or if not authenticated yet
+  if (!hasHydrated || !isAuthenticated) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">

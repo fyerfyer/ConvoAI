@@ -8,6 +8,7 @@ import {
   Patch,
   UseGuards,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { MemberService } from './member.service';
 import { RequirePermissions } from '../../common/decorators/permission.decorator';
@@ -28,10 +29,18 @@ export class MemberController {
   constructor(private readonly memberService: MemberService) {}
 
   @Get()
-  @RequirePermissions(PERMISSIONS.VIEW_CHANNELS)
   async getMembers(
     @Param('guildId') guildId: string,
+    @User() user: JwtPayload,
   ): Promise<ApiResponse<MemberListResponse>> {
+    const isMember = await this.memberService.isMemberInGuild(
+      guildId,
+      user.sub,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('You are not a member of this guild');
+    }
+
     const members = await this.memberService.getGuildMembers(guildId);
     return {
       data: {
@@ -42,11 +51,19 @@ export class MemberController {
   }
 
   @Get(':userId')
-  @RequirePermissions(PERMISSIONS.VIEW_CHANNELS)
   async getMember(
     @Param('guildId') guildId: string,
     @Param('userId') userId: string,
+    @User() user: JwtPayload,
   ): Promise<ApiResponse<MemberListResponse>> {
+    const isMember = await this.memberService.isMemberInGuild(
+      guildId,
+      user.sub,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('You are not a member of this guild');
+    }
+
     const members = await this.memberService.getUserMembers(guildId, userId);
     if (!members || members.length === 0) {
       throw new NotFoundException('Member not found');
@@ -77,6 +94,18 @@ export class MemberController {
     };
   }
 
+  @Delete('@me')
+  async leaveGuild(
+    @Param('guildId') guildId: string,
+    @User() user: JwtPayload,
+  ): Promise<ApiResponse<null>> {
+    await this.memberService.removeMemberFromGuild(guildId, user.sub);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Left guild successfully',
+    };
+  }
+
   @Delete(':userId')
   @RequirePermissions(PERMISSIONS.KICK_MEMBERS)
   async kickMember(
@@ -87,18 +116,6 @@ export class MemberController {
     return {
       statusCode: HttpStatus.OK,
       message: 'Member kicked successfully',
-    };
-  }
-
-  @Delete('@me')
-  async leaveGuild(
-    @Param('guildId') guildId: string,
-    @User() user: JwtPayload,
-  ): Promise<ApiResponse<null>> {
-    await this.memberService.removeMemberFromGuild(guildId, user.sub);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Left guild successfully',
     };
   }
 }
