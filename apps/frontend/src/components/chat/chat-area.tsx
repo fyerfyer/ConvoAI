@@ -146,6 +146,7 @@ export default function ChatArea({
       <MessageList
         messages={messages}
         channelName={channelName}
+        channelId={channelId}
         isLoading={isLoading}
         currentUserId={user?.id}
       />

@@ -15,7 +15,10 @@ import {
   createMessageDTOSchema,
   JwtPayload,
   MESSAGE_EVENT,
+  BOT_INTERNAL_EVENT,
   SOCKET_EVENT,
+  BotStreamStartPayload,
+  BotStreamChunkPayload,
 } from '@discord-platform/shared';
 import { SocketKeys } from '../../common/constants/socket-keys.constant';
 import {
@@ -159,5 +162,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // 向房间内所有用户广播消息
     this.server.to(roomId).emit(SOCKET_EVENT.NEW_MESSAGE, response);
+  }
+
+  // Bot 流事件
+  @OnEvent(BOT_INTERNAL_EVENT.BOT_STREAM_START)
+  handleBotStreamStart(payload: BotStreamStartPayload) {
+    this.server
+      .to(payload.channelId)
+      .emit(SOCKET_EVENT.BOT_STREAM_START, payload);
+  }
+
+  @OnEvent(BOT_INTERNAL_EVENT.BOT_STREAM_CHUNK)
+  handleBotStreamChunk(payload: BotStreamChunkPayload) {
+    this.server
+      .to(payload.channelId)
+      .emit(SOCKET_EVENT.BOT_STREAM_CHUNK, payload);
+  }
+
+  @OnEvent(BOT_INTERNAL_EVENT.BOT_STREAM_END)
+  handleBotStreamEnd(payload: BotStreamChunkPayload) {
+    this.server
+      .to(payload.channelId)
+      .emit(SOCKET_EVENT.BOT_STREAM_END, payload);
   }
 }

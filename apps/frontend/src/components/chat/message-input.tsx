@@ -8,11 +8,12 @@ import {
   useMemo,
   useEffect,
 } from 'react';
-import { Send, PlusCircle, X, FileIcon } from 'lucide-react';
+import { Send, PlusCircle, X, FileIcon, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AttachmentDto, MAX_ATTACHMENT_SIZE } from '@discord-platform/shared';
 import { toast } from '@/hooks/use-toast';
 import { useMembers } from '@/hooks/use-member';
+import { useBots } from '@/hooks/use-bot';
 
 interface PendingFile {
   file: File;
@@ -49,22 +50,57 @@ export default function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: guildMembers = [] } = useMembers(guildId);
+  const { data: gots = [] } = useBots(guildId);
 
+  // Unified mention candidates: members + bots
   const mentionCandidates = useMemo(() => {
     if (!mentionOpen) return [];
     const normalizedQuery = mentionQuery.toLowerCase();
-    const candidates = guildMembers.filter((member) => {
-      const displayName = (
-        member.nickname ||
-        member.user?.name ||
-        ''
-      ).toLowerCase();
-      return (
-        normalizedQuery.length === 0 || displayName.includes(normalizedQuery)
-      );
-    });
-    return candidates.slice(0, 6);
-  }, [guildMembers, mentionOpen, mentionQuery]);
+
+    type MentionCandidate = {
+      id: string;
+      displayName: string;
+      subtitle?: string;
+      isBot: boolean;
+      type?: string;
+    };
+
+    const memberCandidates: MentionCandidate[] = guildMembers
+      .filter((member) => {
+        const displayName = (
+          member.nickname ||
+          member.user?.name ||
+          ''
+        ).toLowerCase();
+        return (
+          normalizedQuery.length === 0 || displayName.includes(normalizedQuery)
+        );
+      })
+      .map((member) => ({
+        id: member.id,
+        displayName: member.nickname || member.user?.name || 'Unknown',
+        subtitle: member.nickname ? member.user?.name : undefined,
+        isBot: false,
+      }));
+
+    const botCandidates: MentionCandidate[] = gots
+      .filter((bot) => {
+        return (
+          bot.status === 'active' &&
+          (normalizedQuery.length === 0 ||
+            bot.name.toLowerCase().includes(normalizedQuery))
+        );
+      })
+      .map((bot) => ({
+        id: `bot-${bot.id}`,
+        displayName: bot.name,
+        subtitle: bot.type === 'agent' ? 'AI Agent' : 'Bot',
+        isBot: true,
+        type: bot.type,
+      }));
+
+    return [...botCandidates, ...memberCandidates].slice(0, 8);
+  }, [guildMembers, gots, mentionOpen, mentionQuery]);
 
   const closeMention = useCallback(() => {
     setMentionOpen(false);
@@ -146,12 +182,12 @@ export default function MessageInput({
   const applyMention = useCallback(
     (memberIndex: number) => {
       if (!mentionOpen || mentionStart === null) return;
-      const member = mentionCandidates[memberIndex];
+      const candidate = mentionCandidates[memberIndex];
       const textarea = textareaRef.current;
-      if (!member || !textarea) return;
+      if (!candidate || !textarea) return;
 
       const cursor = textarea.selectionStart ?? content.length;
-      const displayName = member.nickname || member.user?.name || 'unknown';
+      const displayName = candidate.displayName;
       const mentionText = `@${displayName} `;
       const nextContent =
         content.slice(0, mentionStart) + mentionText + content.slice(cursor);
@@ -406,12 +442,10 @@ export default function MessageInput({
         {mentionOpen && (
           <div className="absolute bottom-full left-4 right-4 mb-2 rounded-md border border-gray-600 bg-gray-800 shadow-lg overflow-hidden z-20">
             {mentionCandidates.length > 0 ? (
-              mentionCandidates.map((member, index) => {
-                const displayName =
-                  member.nickname || member.user?.name || 'Unknown';
+              mentionCandidates.map((candidate, index) => {
                 return (
                   <button
-                    key={member.id}
+                    key={candidate.id}
                     type="button"
                     className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
                       index === mentionSelectedIndex
@@ -423,10 +457,20 @@ export default function MessageInput({
                       applyMention(index);
                     }}
                   >
-                    <span className="truncate">{displayName}</span>
-                    {member.nickname && (
+                    <span className="flex items-center gap-2 truncate">
+                      {candidate.isBot && (
+                        <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                      )}
+                      <span className="truncate">{candidate.displayName}</span>
+                      {candidate.isBot && (
+                        <span className="shrink-0 rounded bg-blue-500/20 px-1 py-0.5 text-[10px] text-blue-300">
+                          {candidate.type === 'agent' ? 'Agent' : 'Bot'}
+                        </span>
+                      )}
+                    </span>
+                    {candidate.subtitle && !candidate.isBot && (
                       <span className="ml-3 truncate text-xs text-gray-400">
-                        {member.user?.name}
+                        {candidate.subtitle}
                       </span>
                     )}
                   </button>
@@ -434,7 +478,7 @@ export default function MessageInput({
               })
             ) : (
               <div className="px-3 py-2 text-sm text-gray-400">
-                No members found
+                No members or bots found
               </div>
             )}
           </div>

@@ -3,11 +3,13 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { Hash } from 'lucide-react';
 import MessageItem from './message-item';
+import BotStreamMessage from './bot-stream-message';
 import { MessageResponse } from '@discord-platform/shared';
 
 interface MessageListProps {
   messages: MessageResponse[];
   channelName: string;
+  channelId: string;
   isLoading: boolean;
   currentUserId?: string;
   hasOlderMessages?: boolean;
@@ -17,6 +19,7 @@ interface MessageListProps {
 export default function MessageList({
   messages,
   channelName,
+  channelId,
   isLoading,
   currentUserId,
   hasOlderMessages = false,
@@ -115,6 +118,9 @@ export default function MessageList({
               currentUserId={currentUserId}
             />
           ))}
+
+          {/* Bot streaming messages (in-progress) */}
+          <BotStreamMessage channelId={channelId} />
         </div>
         <div ref={bottomRef} />
       </div>

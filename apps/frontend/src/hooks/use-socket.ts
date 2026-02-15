@@ -5,10 +5,13 @@ import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/auth-store';
 import { useChatStore } from '../stores/chat-store';
+import { useBotStreamStore } from '../stores/bot-stream-store';
 import { chatKeys } from './use-chat';
 import {
   CreateMessageDTO,
   MessageResponse,
+  BotStreamStartPayload,
+  BotStreamChunkPayload,
   SOCKET_EVENT,
 } from '@discord-platform/shared';
 
@@ -23,6 +26,7 @@ export function useSocket() {
   const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
   const { addMessage, setTypingUser, removeTypingUser } = useChatStore();
+  const { startStream, appendChunk, endStream, clearAll } = useBotStreamStore();
 
   // Initialize and connect socket
   useEffect(() => {
@@ -83,6 +87,32 @@ export function useSocket() {
       },
     );
 
+    // Bot streaming events
+    socket.on(SOCKET_EVENT.BOT_STREAM_START, (data: BotStreamStartPayload) => {
+      startStream(data.streamId, data.botId, data.channelId);
+    });
+
+    socket.on(SOCKET_EVENT.BOT_STREAM_CHUNK, (data: BotStreamChunkPayload) => {
+      // Find active stream for this bot+channel
+      const streams = useBotStreamStore.getState().activeStreams;
+      const entry = Object.entries(streams).find(
+        ([, s]) => s.botId === data.botId && s.channelId === data.channelId,
+      );
+      if (entry) {
+        appendChunk(entry[0], data.content);
+      }
+    });
+
+    socket.on(SOCKET_EVENT.BOT_STREAM_END, (data: BotStreamChunkPayload) => {
+      const streams = useBotStreamStore.getState().activeStreams;
+      const entry = Object.entries(streams).find(
+        ([, s]) => s.botId === data.botId && s.channelId === data.channelId,
+      );
+      if (entry) {
+        endStream(entry[0]);
+      }
+    });
+
     return () => {
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
@@ -91,7 +121,17 @@ export function useSocket() {
       socketRef.current = null;
       setIsConnected(false);
     };
-  }, [token, addMessage, setTypingUser, removeTypingUser, queryClient]);
+  }, [
+    token,
+    addMessage,
+    setTypingUser,
+    removeTypingUser,
+    queryClient,
+    startStream,
+    appendChunk,
+    endStream,
+    clearAll,
+  ]);
 
   // Join a channel room
   const joinRoom = useCallback((channelId: string) => {

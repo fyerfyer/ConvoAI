@@ -67,7 +67,7 @@ export interface MemberResponse {
   roles: string[];
   nickname?: string;
   joinedAt: string;
-  user?: IUserPublic; // Optional expanded user
+  user?: IUserPublic;
 }
 
 export interface MemberListResponse {
@@ -125,4 +125,23 @@ export interface MessageResponse {
 
 export interface MessageListResponse {
   messages: MessageResponse[];
+}
+
+export interface BotResponse {
+  id: string;
+  userId: string;
+  name: string;
+  avatar: string | null;
+  guildId: string;
+  type: string;
+  webhookUrl: string;
+  webhookToken: string;
+  description: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BotListResponse {
+  bots: BotResponse[];
 }

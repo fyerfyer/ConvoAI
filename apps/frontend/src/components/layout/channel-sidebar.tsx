@@ -10,6 +10,8 @@ import {
   Plus,
   Settings,
   UserPlus,
+  Bot,
+  Cpu,
 } from 'lucide-react';
 import {
   DndContext,
@@ -30,6 +32,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   useChannels,
   useUpdateChannel,
   useDeleteChannel,
@@ -41,7 +50,10 @@ import SortableCategory from '@/components/channel/sortable-category';
 import ChannelContextMenu from '@/components/channel/channel-context-menu';
 import RenameChannelDialog from '@/components/channel/rename-channel-dialog';
 import InviteMemberDialog from '@/components/guild/invite-member-dialog';
-import { CHANNEL, ChannelResponse } from '@discord-platform/shared';
+import GuildSettingsDialog from '@/components/guild/guild-settings-dialog';
+import CreateBotDialog from '@/components/bot/create-bot-dialog';
+import { useBots } from '@/hooks/use-bot';
+import { CHANNEL, ChannelResponse, BOT_STATUS } from '@discord-platform/shared';
 
 export default function ChannelSidebar() {
   const router = useRouter();
@@ -74,6 +86,17 @@ export default function ChannelSidebar() {
 
   // Invite dialog state
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+
+  // Guild settings dialog state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState('bots');
+
+  // Bot creation dialog state
+  const [createBotOpen, setCreateBotOpen] = useState(false);
+
+  // Bots query
+  const { data: bots = [] } = useBots(guildId);
+  const activeBots = bots.filter((b) => b.status === BOT_STATUS.ACTIVE);
 
   // DnD state
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -202,7 +225,7 @@ export default function ChannelSidebar() {
       if (draggedChannel.parentId !== targetChannel.parentId) {
         updateChannel.mutate({
           channelId: draggedChannel.id,
-          guildId: guildId!,
+          guildId: guildId,
           data: { parentId: targetChannel.parentId ?? undefined },
         });
       }
@@ -216,24 +239,56 @@ export default function ChannelSidebar() {
   return (
     <>
       <div className="flex w-60 flex-col bg-gray-800 text-gray-100">
-        {/* Guild Name Header */}
-        <div className="flex h-12 items-center justify-between px-4 shadow-md">
-          <h2 className="font-semibold truncate">{guildName}</h2>
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              title="Invite Members"
+        {/* Guild Name Header with Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex h-12 w-full items-center justify-between px-4 shadow-md hover:bg-gray-700/50 transition-colors">
+              <h2 className="font-semibold truncate">{guildName}</h2>
+              <ChevronDown className="h-4 w-4 text-gray-400 shrink-0 ml-1" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="w-56 bg-gray-900 border-gray-700"
+          >
+            <DropdownMenuItem
+              className="text-gray-300 hover:text-white focus:text-white gap-2"
               onClick={() => setInviteDialogOpen(true)}
             >
               <UserPlus className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+              Invite People
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-gray-700" />
+            <DropdownMenuItem
+              className="text-gray-300 hover:text-white focus:text-white gap-2"
+              onClick={() => setCreateBotOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Create Bot / Agent
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-gray-300 hover:text-white focus:text-white gap-2"
+              onClick={() => {
+                setSettingsDefaultTab('bots');
+                setSettingsOpen(true);
+              }}
+            >
+              <Bot className="h-4 w-4" />
+              Manage Bots & Agents
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-gray-700" />
+            <DropdownMenuItem
+              className="text-gray-300 hover:text-white focus:text-white gap-2"
+              onClick={() => {
+                setSettingsDefaultTab('overview');
+                setSettingsOpen(true);
+              }}
+            >
               <Settings className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+              Guild Settings
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Separator className="bg-gray-700" />
 
@@ -341,6 +396,55 @@ export default function ChannelSidebar() {
           </div>
         </ScrollArea>
 
+        {/* Active Bots Quick Section */}
+        {activeBots.length > 0 && (
+          <div className="border-t border-gray-700">
+            <button
+              className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase text-gray-400 hover:text-gray-300"
+              onClick={() => toggleSection('bots')}
+            >
+              <span className="flex items-center gap-1">
+                {collapsedSections['bots'] ? (
+                  <ChevronRight className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                Bots ({activeBots.length})
+              </span>
+              <Plus
+                className="h-3.5 w-3.5 text-gray-500 hover:text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCreateBotOpen(true);
+                }}
+              />
+            </button>
+            {!collapsedSections['bots'] && (
+              <div className="px-2 pb-2 space-y-0.5">
+                {activeBots.map((bot) => (
+                  <button
+                    key={bot.id}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+                    onClick={() => {
+                      setSettingsDefaultTab('bots');
+                      setSettingsOpen(true);
+                    }}
+                    title={bot.description || bot.name}
+                  >
+                    {bot.type === 'agent' ? (
+                      <Cpu className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                    ) : (
+                      <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                    )}
+                    <span className="truncate text-xs">{bot.name}</span>
+                    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Create Channel Button */}
         <div className="p-2 border-t border-gray-700">
           <Button
@@ -387,6 +491,23 @@ export default function ChannelSidebar() {
         guildId={guildId}
         guildName={guildName}
       />
+
+      {/* Guild Settings Dialog */}
+      <GuildSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        guild={activeGuild}
+        defaultTab={settingsDefaultTab}
+      />
+
+      {/* Create Bot Shortcut Dialog */}
+      {guildId && (
+        <CreateBotDialog
+          open={createBotOpen}
+          onOpenChange={setCreateBotOpen}
+          guildId={guildId}
+        />
+      )}
     </>
   );
 }

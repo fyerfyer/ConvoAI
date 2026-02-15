@@ -13,6 +13,7 @@ import { GuildModule } from './modules/guild/guild.module';
 import { S3Module } from './common/configs/s3/s3.module';
 import { ChannelModule } from './modules/channel/channel.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
+import { BotModule } from './modules/bot/bot.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
@@ -32,6 +33,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     S3Module,
     ChannelModule,
     GatewayModule,
+    BotModule,
   ],
 })
 export class AppModule {}
