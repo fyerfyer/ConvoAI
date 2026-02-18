@@ -134,10 +134,23 @@ export interface BotResponse {
   avatar: string | null;
   guildId: string;
   type: string;
-  webhookUrl: string;
-  webhookToken: string;
+  executionMode: string;
+  webhookUrl?: string;
+  webhookToken?: string;
   description: string;
   status: string;
+  templateId?: string;
+  templateConfig?: Record<string, unknown>;
+  llmConfig?: {
+    provider: string;
+    model: string;
+    systemPrompt: string;
+    temperature: number;
+    maxTokens: number;
+    tools?: string[];
+    customBaseUrl?: string;
+    // apiKey 永远不返回给前端
+  };
   createdAt: string;
   updatedAt: string;
 }

@@ -1,4 +1,10 @@
-import { AgentEventType } from '../constants/bot.constant';
+import {
+  AgentEventType,
+  LlmProviderValue,
+  LlmToolValue,
+  TemplateIdValue,
+  ExecutionModeValue,
+} from '../constants/bot.constant';
 
 export interface AgentContextMessage {
   role: 'user' | 'assistant';
@@ -53,4 +59,98 @@ export interface BotStreamStartPayload {
   botId: string;
   channelId: string;
   streamId: string;
+}
+
+// ── Template Bot 配置接口 ──
+
+export interface WelcomeTemplateConfig {
+  welcomeMessage: string;
+  showMemberCount?: boolean;
+}
+
+export interface PollTemplateConfig {
+  maxOptions?: number;
+  defaultDuration?: number; // seconds
+}
+
+export interface GameTemplateConfig {
+  enabledGames?: Array<'8ball' | 'roll' | 'guess' | 'rps'>;
+  guessRange?: { min: number; max: number };
+}
+
+export interface ReminderTemplateConfig {
+  maxRemindersPerUser?: number;
+  maxDuration?: number; // seconds
+}
+
+export interface AutoResponderRule {
+  trigger: string; // keyword or regex pattern
+  response: string;
+  isRegex?: boolean;
+  caseSensitive?: boolean;
+}
+
+export interface AutoResponderTemplateConfig {
+  rules: AutoResponderRule[];
+}
+
+export type TemplateConfig =
+  | WelcomeTemplateConfig
+  | PollTemplateConfig
+  | GameTemplateConfig
+  | ReminderTemplateConfig
+  | AutoResponderTemplateConfig;
+
+// ── Managed LLM 配置接口 ──
+
+export interface LlmConfig {
+  provider: LlmProviderValue;
+  apiKey: string; // 存储时加密，运行时解密
+  model: string;
+  systemPrompt: string;
+  temperature: number;
+  maxTokens: number;
+  tools?: LlmToolValue[];
+  customBaseUrl?: string; // provider='custom' 时使用
+}
+
+// ── 模板元信息（前端展示用）──
+
+export interface TemplateInfo {
+  id: TemplateIdValue;
+  name: string;
+  description: string;
+  icon: string;
+  category: 'utility' | 'fun' | 'moderation' | 'ai';
+  configSchema: Record<string, TemplateConfigFieldSchema>;
+}
+
+export interface TemplateConfigFieldSchema {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  label: string;
+  description?: string;
+  required?: boolean;
+  default?: unknown;
+  min?: number;
+  max?: number;
+}
+
+// ── Bot 执行上下文（传递给 Runner 的统一结构）──
+
+export interface BotExecutionContext {
+  botId: string;
+  botUserId: string;
+  botName: string;
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  author: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
+  content: string; // 去除 @mention 后的纯内容
+  rawContent: string; // 原始消息内容
+  context: AgentContextMessage[];
+  executionMode: ExecutionModeValue;
 }

@@ -3,6 +3,8 @@
 import {
   Bot,
   Globe,
+  LayoutTemplate,
+  Cpu,
   MoreVertical,
   Pencil,
   Power,
@@ -20,7 +22,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { BotResponse, BOT_STATUS, BOT_TYPE } from '@discord-platform/shared';
+import {
+  BotResponse,
+  BOT_STATUS,
+  EXECUTION_MODE,
+} from '@discord-platform/shared';
 import { cn } from '@/lib/utils';
 
 interface BotCardProps {
@@ -31,6 +37,47 @@ interface BotCardProps {
   onRegenerateToken: (bot: BotResponse) => void;
 }
 
+const MODE_META: Record<
+  string,
+  { icon: React.ReactNode; label: string; color: string; avatarBg: string }
+> = {
+  [EXECUTION_MODE.WEBHOOK]: {
+    icon: <Globe className="h-3 w-3" />,
+    label: 'Webhook',
+    color: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    avatarBg: 'bg-blue-600',
+  },
+  [EXECUTION_MODE.BUILTIN]: {
+    icon: <LayoutTemplate className="h-3 w-3" />,
+    label: 'Template',
+    color: 'bg-green-500/20 text-green-300 border-green-500/30',
+    avatarBg: 'bg-green-600',
+  },
+  [EXECUTION_MODE.MANAGED_LLM]: {
+    icon: <Cpu className="h-3 w-3" />,
+    label: 'AI Agent',
+    color: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    avatarBg: 'bg-purple-600',
+  },
+};
+
+function getModeDetail(bot: BotResponse): string {
+  const mode = bot.executionMode;
+  if (mode === EXECUTION_MODE.WEBHOOK) {
+    return bot.webhookUrl || 'No URL configured';
+  }
+  if (mode === EXECUTION_MODE.BUILTIN) {
+    return bot.templateId ? `Template: ${bot.templateId}` : 'No template';
+  }
+  if (mode === EXECUTION_MODE.MANAGED_LLM && bot.llmConfig) {
+    const provider =
+      bot.llmConfig.provider.charAt(0).toUpperCase() +
+      bot.llmConfig.provider.slice(1);
+    return `${provider} / ${bot.llmConfig.model}`;
+  }
+  return '';
+}
+
 export default function BotCard({
   bot,
   onEdit,
@@ -39,7 +86,10 @@ export default function BotCard({
   onRegenerateToken,
 }: BotCardProps) {
   const isActive = bot.status === BOT_STATUS.ACTIVE;
-  const isAgent = bot.type === BOT_TYPE.AGENT;
+  const mode = bot.executionMode || EXECUTION_MODE.WEBHOOK;
+  const meta = MODE_META[mode] ?? MODE_META[EXECUTION_MODE.WEBHOOK];
+  const detail = getModeDetail(bot);
+  const isWebhook = mode === EXECUTION_MODE.WEBHOOK;
 
   return (
     <div
@@ -55,7 +105,9 @@ export default function BotCard({
         <div className="relative shrink-0">
           <Avatar className="h-12 w-12">
             <AvatarImage src={bot.avatar || undefined} />
-            <AvatarFallback className="bg-indigo-600 text-white text-sm font-bold">
+            <AvatarFallback
+              className={cn('text-white text-sm font-bold', meta.avatarBg)}
+            >
               <Bot className="h-6 w-6" />
             </AvatarFallback>
           </Avatar>
@@ -76,13 +128,12 @@ export default function BotCard({
             <Badge
               variant="secondary"
               className={cn(
-                'text-[10px] px-1.5 py-0',
-                isAgent
-                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                  : 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+                'text-[10px] px-1.5 py-0 flex items-center gap-1',
+                meta.color,
               )}
             >
-              {isAgent ? 'Agent' : 'Bot'}
+              {meta.icon}
+              {meta.label}
             </Badge>
             <Badge
               variant="secondary"
@@ -103,10 +154,18 @@ export default function BotCard({
             </p>
           )}
 
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-            <Globe className="h-3 w-3" />
-            <span className="truncate max-w-[200px]">{bot.webhookUrl}</span>
-          </div>
+          {detail && (
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+              {isWebhook ? (
+                <Globe className="h-3 w-3" />
+              ) : mode === EXECUTION_MODE.BUILTIN ? (
+                <LayoutTemplate className="h-3 w-3" />
+              ) : (
+                <Cpu className="h-3 w-3" />
+              )}
+              <span className="truncate max-w-[220px]">{detail}</span>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -147,13 +206,15 @@ export default function BotCard({
                 </>
               )}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-gray-300 hover:text-white focus:text-white"
-              onClick={() => onRegenerateToken(bot)}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Regenerate Token
-            </DropdownMenuItem>
+            {isWebhook && (
+              <DropdownMenuItem
+                className="text-gray-300 hover:text-white focus:text-white"
+                onClick={() => onRegenerateToken(bot)}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Regenerate Token
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator className="bg-gray-700" />
             <DropdownMenuItem
               className="text-red-400 hover:text-red-300 focus:text-red-300"

@@ -13,6 +13,7 @@ import { JwtGuard } from '../../common/guards/jwt.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 import { BotService } from './bot.service';
+import { TemplateRegistry } from './templates/template-registry';
 import {
   ApiResponse,
   BotResponse,
@@ -22,24 +23,41 @@ import {
   UpdateBotDTO,
   updateBotDTOSchema,
   JwtPayload,
+  TemplateInfo,
 } from '@discord-platform/shared';
 
 @Controller('bots')
 @UseGuards(JwtGuard)
 export class BotController {
-  constructor(private readonly botService: BotService) {}
+  constructor(
+    private readonly botService: BotService,
+    private readonly templateRegistry: TemplateRegistry,
+  ) {}
+
+  @Get('templates')
+  async listTemplates(): Promise<ApiResponse<{ templates: TemplateInfo[] }>> {
+    const templates = this.templateRegistry.listTemplates();
+    return {
+      data: { templates },
+      statusCode: HttpStatus.OK,
+    };
+  }
 
   @Post()
   async createBot(
     @User() user: JwtPayload,
     @Body(new ZodValidationPipe(createBotDTOSchema)) dto: CreateBotDTO,
-  ): Promise<ApiResponse<BotResponse & { webhookSecret: string }>> {
+  ): Promise<ApiResponse<BotResponse & { webhookSecret?: string }>> {
     const { bot, webhookSecret } = await this.botService.createBot(
       user.sub,
       dto,
     );
     return {
-      data: { ...this.botService.toBotResponse(bot), webhookSecret },
+      data: {
+        ...this.botService.toBotResponse(bot),
+        webhookToken: bot.webhookToken,
+        webhookSecret,
+      },
       statusCode: HttpStatus.CREATED,
       message: 'Bot created successfully',
     };

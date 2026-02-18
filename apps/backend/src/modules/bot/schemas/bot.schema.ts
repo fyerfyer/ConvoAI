@@ -13,10 +13,46 @@ import {
   BotTypeValue,
   BOT_STATUS,
   BotStatusValue,
+  EXECUTION_MODE,
+  ExecutionModeValue,
+  TemplateIdValue,
+  LlmProviderValue,
+  LlmToolValue,
 } from '@discord-platform/shared';
 
 export type BotDocument = HydratedDocument<Bot>;
 export type BotModel = Model<BotDocument>;
+
+// ── 内嵌 LLM 配置 Schema ──
+@Schema({ _id: false })
+export class LlmConfigEmbedded {
+  @Prop({ type: String, required: true })
+  provider: LlmProviderValue;
+
+  @Prop({ type: String, required: true, select: false })
+  apiKey: string; // AES-256-GCM 加密存储
+
+  @Prop({ type: String, required: true })
+  model: string;
+
+  @Prop({ type: String, default: 'You are a helpful assistant.' })
+  systemPrompt: string;
+
+  @Prop({ type: Number, default: 0.7 })
+  temperature: number;
+
+  @Prop({ type: Number, default: 1024 })
+  maxTokens: number;
+
+  @Prop({ type: [String], default: [] })
+  tools: LlmToolValue[];
+
+  @Prop({ type: String })
+  customBaseUrl?: string;
+}
+
+export const llmConfigEmbeddedSchema =
+  SchemaFactory.createForClass(LlmConfigEmbedded);
 
 @Schema({ timestamps: true })
 export class Bot {
@@ -33,14 +69,30 @@ export class Bot {
   })
   type: BotTypeValue;
 
-  @Prop({ type: String, required: true })
-  webhookUrl: string;
+  @Prop({
+    type: String,
+    enum: Object.values(EXECUTION_MODE),
+    default: EXECUTION_MODE.WEBHOOK,
+  })
+  executionMode: ExecutionModeValue;
 
-  @Prop({ type: String, required: true, select: false })
-  webhookSecret: string;
+  @Prop({ type: String })
+  webhookUrl?: string;
 
-  @Prop({ type: String, required: true, unique: true, index: true })
-  webhookToken: string;
+  @Prop({ type: String, select: false })
+  webhookSecret?: string;
+
+  @Prop({ type: String, unique: true, index: true, sparse: true })
+  webhookToken?: string;
+
+  @Prop({ type: String })
+  templateId?: TemplateIdValue;
+
+  @Prop({ type: Object, default: {} })
+  templateConfig?: Record<string, unknown>;
+
+  @Prop({ type: llmConfigEmbeddedSchema })
+  llmConfig?: LlmConfigEmbedded;
 
   @Prop({ type: String, default: '' })
   description: string;
@@ -60,3 +112,5 @@ export const botSchema = SchemaFactory.createForClass(Bot);
 
 // 复合索引：查询特定状态 bot
 botSchema.index({ guildId: 1, status: 1 });
+// 执行模式索引
+botSchema.index({ guildId: 1, executionMode: 1 });

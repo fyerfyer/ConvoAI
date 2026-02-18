@@ -1,11 +1,12 @@
 import { Body, Controller, HttpStatus, Post, UsePipes } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
-  AuthContracts,
   AuthResponse,
   ApiResponse,
   LoginDTO,
   RegisterDTO,
+  registerSchema,
+  loginSchema,
 } from '@discord-platform/shared';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 
@@ -14,7 +15,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @UsePipes(new ZodValidationPipe(AuthContracts.register.body))
+  @UsePipes(new ZodValidationPipe(registerSchema))
   async register(
     @Body() registerDTO: RegisterDTO,
   ): Promise<ApiResponse<AuthResponse>> {
@@ -27,7 +28,7 @@ export class AuthController {
   }
 
   @Post('login')
-  @UsePipes(new ZodValidationPipe(AuthContracts.login.body))
+  @UsePipes(new ZodValidationPipe(loginSchema))
   async login(@Body() loginDTO: LoginDTO): Promise<ApiResponse<AuthResponse>> {
     const data = await this.authService.login(loginDTO);
     return {

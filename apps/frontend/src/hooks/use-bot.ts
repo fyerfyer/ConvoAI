@@ -8,6 +8,7 @@ import {
   BotListResponse,
   CreateBotDTO,
   UpdateBotDTO,
+  TemplateInfo,
 } from '@discord-platform/shared';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -24,6 +25,7 @@ export const botKeys = {
   all: ['bots'] as const,
   byGuild: (guildId: string) => [...botKeys.all, 'guild', guildId] as const,
   detail: (botId: string) => [...botKeys.all, 'detail', botId] as const,
+  templates: () => [...botKeys.all, 'templates'] as const,
 };
 
 // List bots in a guild
@@ -67,7 +69,7 @@ export function useCreateBot() {
   return useMutation({
     mutationFn: async (data: CreateBotDTO) => {
       const response = await api.post<
-        ApiResponse<{ bot: BotResponse; webhookSecret: string }>
+        ApiResponse<BotResponse & { webhookSecret?: string }>
       >('/bots', data);
       return response.data;
     },
@@ -197,5 +199,23 @@ export function useRegenerateToken() {
         description: getErrorMessage(error, 'Unable to regenerate token.'),
       });
     },
+  });
+}
+
+// List available bot templates
+export function useTemplates() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  return useQuery({
+    queryKey: botKeys.templates(),
+    queryFn: async () => {
+      const response =
+        await api.get<ApiResponse<{ templates: TemplateInfo[] }>>(
+          '/bots/templates',
+        );
+      return response.data?.templates ?? [];
+    },
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000, // templates rarely change
   });
 }

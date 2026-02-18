@@ -40,7 +40,7 @@ export class ChatService {
     const channelObjectId = new Types.ObjectId(channelId);
     const channel = await this.channelModel
       .exists({ _id: channelObjectId })
-      .session(session);
+      .session(session ?? null);
 
     if (!channel) {
       throw new NotFoundException('Channel not found');
@@ -66,7 +66,7 @@ export class ChatService {
     await message.save({ session });
 
     const populatedMessage = await message.populate([
-      { path: 'sender', select: 'name avatar' },
+      { path: 'sender', select: 'name avatar isBot' },
       { path: 'replyTo', select: 'content sender' },
     ]);
 
@@ -91,7 +91,7 @@ export class ChatService {
       .find(query)
       .sort({ _id: -1 })
       .limit(limit)
-      .populate('sender', 'name avatar')
+      .populate('sender', 'name avatar isBot')
       .populate('replyTo', 'content sender')
       .exec();
   }
@@ -104,7 +104,7 @@ export class ChatService {
     // 否则手动 populate
     return this.messageModel
       .findById(message._id)
-      .populate('sender', 'name avatar')
+      .populate('sender', 'name avatar isBot')
       .populate('replyTo', 'content sender')
       .exec() as Promise<MessageDocument>;
   }

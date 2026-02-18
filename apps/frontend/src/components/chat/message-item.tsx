@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download, FileIcon, Play } from 'lucide-react';
+import { Download, FileIcon, Play, Bot } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import EmbedRenderer from './embed-renderer';
 import { MessageResponse } from '@discord-platform/shared';
@@ -100,8 +100,17 @@ export default function MessageItem({
     >
       <Avatar className="h-10 w-10 mr-4 shrink-0 mt-0.5">
         <AvatarImage src={message.author.avatar || undefined} />
-        <AvatarFallback className="bg-indigo-500 text-white text-sm">
-          {getInitials(authorDisplayName)}
+        <AvatarFallback
+          className={cn(
+            'text-white text-sm',
+            message.author.isBot ? 'bg-blue-600' : 'bg-indigo-500',
+          )}
+        >
+          {message.author.isBot ? (
+            <Bot className="h-5 w-5" />
+          ) : (
+            getInitials(authorDisplayName)
+          )}
         </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
