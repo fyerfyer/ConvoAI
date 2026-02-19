@@ -64,9 +64,21 @@ const TOOL_LABELS: Record<string, { name: string; description: string }> = {
     name: 'Code Execution',
     description: 'Evaluate code and math',
   },
-  [LLM_TOOL.IMAGE_GENERATION]: {
-    name: 'Image Generation',
-    description: 'Generate images from text',
+  [LLM_TOOL.SUMMARIZE_USER]: {
+    name: 'Summarize User',
+    description: 'Summarize what a user said in the channel',
+  },
+  [LLM_TOOL.CHANNEL_HISTORY]: {
+    name: 'Channel History',
+    description: 'Read recent channel messages for context',
+  },
+  [LLM_TOOL.GUILD_INFO]: {
+    name: 'Guild Info',
+    description: 'Get server info (channels, members, etc.)',
+  },
+  [LLM_TOOL.MEMBER_LIST]: {
+    name: 'Member List',
+    description: 'List all members in the server',
   },
 };
 

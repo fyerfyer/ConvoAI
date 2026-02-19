@@ -123,7 +123,7 @@ export default function ChatArea({
   );
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-700">
+    <div className="flex-1 flex flex-col bg-gray-700 min-h-0">
       {/* Channel Header */}
       <div className="flex h-12 items-center justify-between px-4 shadow-md bg-gray-700 border-b border-gray-600">
         <div className="flex items-center">
@@ -151,16 +151,16 @@ export default function ChatArea({
         currentUserId={user?.id}
       />
 
-      {/* Typing Indicator */}
-      {currentTypingUsers.length > 0 && (
-        <div className="px-4 py-1 text-xs text-gray-400">
+      {/* Typing Indicator — fixed height to prevent layout shift */}
+      <div className="h-6 px-4 flex items-center text-xs text-gray-400">
+        {currentTypingUsers.length > 0 && (
           <span className="animate-pulse">
             {currentTypingUsers.length === 1
               ? 'Someone is typing...'
               : `${currentTypingUsers.length} people are typing...`}
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Message Input */}
       <MessageInput

@@ -392,10 +392,10 @@ export default function MessageInput({
   };
 
   return (
-    <div className="px-4 pb-6 pt-2">
+    <div className="px-4 pb-4 pt-2">
       {/* Pending Files Preview */}
       {pendingFiles.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2 rounded-t-lg bg-gray-600 px-4 py-3">
+        <div className="flex flex-wrap gap-2 rounded-t-lg bg-gray-600 px-4 py-3">
           {pendingFiles.map((pf, idx) => (
             <div
               key={idx}
@@ -438,7 +438,7 @@ export default function MessageInput({
         </div>
       )}
 
-      <div className="relative flex items-end rounded-lg bg-gray-600 px-4 py-2">
+      <div className={`relative flex items-end bg-gray-600 px-4 py-2 transition-colors focus-within:ring-1 focus-within:ring-indigo-500 ${pendingFiles.length > 0 ? 'rounded-b-lg' : 'rounded-lg'}`}>
         {mentionOpen && (
           <div className="absolute bottom-full left-4 right-4 mb-2 rounded-md border border-gray-600 bg-gray-800 shadow-lg overflow-hidden z-20">
             {mentionCandidates.length > 0 ? (

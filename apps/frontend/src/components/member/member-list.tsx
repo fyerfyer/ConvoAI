@@ -94,12 +94,13 @@ export default function MemberList({ guildId }: MemberListProps) {
 
   return (
     <>
-      <div className="w-60 bg-gray-800 flex flex-col">
+      <div className="w-60 bg-gray-800 flex flex-col min-h-0">
         <div className="p-3 text-xs font-semibold uppercase text-gray-400">
           Members — {members?.length ?? 0}
         </div>
 
-        <ScrollArea className="flex-1 px-2">
+        <ScrollArea className="flex-1">
+          <div className="px-2 pb-2">
           {/* Owner section */}
           {ownerMembers.length > 0 && guild && (
             <div className="mb-2">
@@ -126,6 +127,7 @@ export default function MemberList({ guildId }: MemberListProps) {
               </div>
             </div>
           )}
+          </div>
         </ScrollArea>
 
         {/* Bottom actions */}

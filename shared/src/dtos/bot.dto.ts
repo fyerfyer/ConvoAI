@@ -14,6 +14,10 @@ const llmToolEnum = z.enum([
   'web-search',
   'code-execution',
   'image-generation',
+  'summarize-user',
+  'channel-history',
+  'guild-info',
+  'member-list',
 ]);
 
 // ── LLM 配置 Schema ──

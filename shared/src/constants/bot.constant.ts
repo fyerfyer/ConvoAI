@@ -47,11 +47,15 @@ export const LLM_PROVIDER = {
 export type LlmProviderKey = keyof typeof LLM_PROVIDER;
 export type LlmProviderValue = (typeof LLM_PROVIDER)[LlmProviderKey];
 
-// ── LLM 可用工具 ──
 export const LLM_TOOL = {
+  // 通用工具
   WEB_SEARCH: 'web-search',
   CODE_EXECUTION: 'code-execution',
-  IMAGE_GENERATION: 'image-generation',
+  // Guild / Channel 专用工具
+  SUMMARIZE_USER: 'summarize-user',
+  CHANNEL_HISTORY: 'channel-history',
+  GUILD_INFO: 'guild-info',
+  MEMBER_LIST: 'member-list',
 } as const;
 
 export type LlmToolKey = keyof typeof LLM_TOOL;

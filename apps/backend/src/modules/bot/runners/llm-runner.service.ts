@@ -7,6 +7,7 @@ import { randomBytes } from 'crypto';
 import { BotDocument, LlmConfigEmbedded } from '../schemas/bot.schema';
 import { EncryptionService } from '../crypto/encryption.service';
 import { ChatService } from '../../chat/chat.service';
+import { OpenAITool, ToolExecutorService } from '../tools/tool-executor.service';
 import { UserDocument } from '../../user/schemas/user.schema';
 
 import {
@@ -16,8 +17,6 @@ import {
   BotStreamStartPayload,
   BotStreamChunkPayload,
   LLM_PROVIDER,
-  LLM_TOOL,
-  LlmToolValue,
 } from '@discord-platform/shared';
 import { AppLogger } from '../../../common/configs/logger/logger.service';
 
@@ -38,15 +37,6 @@ interface ToolCall {
   };
 }
 
-interface OpenAITool {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
-
 // Provider → Base URL 映射
 const PROVIDER_BASE_URLS: Record<string, string> = {
   [LLM_PROVIDER.OPENAI]: 'https://api.openai.com/v1',
@@ -55,83 +45,15 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
     'https://generativelanguage.googleapis.com/v1beta/openai',
 };
 
-// LLM Tool → OpenAI Function 定义映射
-const TOOL_DEFINITIONS: Record<string, OpenAITool> = {
-  [LLM_TOOL.WEB_SEARCH]: {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description:
-        'Search the web for current information. Use this when users ask about recent events, facts, or anything that requires up-to-date knowledge.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'The search query to look up',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  [LLM_TOOL.CODE_EXECUTION]: {
-    type: 'function',
-    function: {
-      name: 'execute_code',
-      description:
-        'Execute a code snippet and return the result. Supports JavaScript/TypeScript evaluation for calculations, data processing, etc.',
-      parameters: {
-        type: 'object',
-        properties: {
-          language: {
-            type: 'string',
-            enum: ['javascript', 'python'],
-            description: 'The programming language of the code',
-          },
-          code: {
-            type: 'string',
-            description: 'The code to execute',
-          },
-        },
-        required: ['language', 'code'],
-      },
-    },
-  },
-  [LLM_TOOL.IMAGE_GENERATION]: {
-    type: 'function',
-    function: {
-      name: 'generate_image',
-      description:
-        'Generate an image based on a text description. Returns the image URL.',
-      parameters: {
-        type: 'object',
-        properties: {
-          prompt: {
-            type: 'string',
-            description: 'Detailed description of the image to generate',
-          },
-          size: {
-            type: 'string',
-            enum: ['256x256', '512x512', '1024x1024'],
-            description: 'Size of the generated image',
-          },
-        },
-        required: ['prompt'],
-      },
-    },
-  },
-};
-
 const MAX_TOOL_ITERATIONS = 5;
 
-// 平台运行 LLM 请求服务
 @Injectable()
 export class LlmRunner {
   constructor(
     private readonly httpService: HttpService,
     private readonly encryptionService: EncryptionService,
     private readonly chatService: ChatService,
+    private readonly toolExecutor: ToolExecutorService,
     private readonly eventEmitter: EventEmitter2,
     private readonly logger: AppLogger,
   ) {}
@@ -152,7 +74,7 @@ export class LlmRunner {
       const apiKey = this.decryptApiKey(llmConfig.apiKey);
       const baseUrl = this.resolveBaseUrl(llmConfig);
       const messages = this.buildMessages(llmConfig, ctx);
-      const tools = this.resolveTools(llmConfig.tools);
+      const tools = this.toolExecutor.resolveTools(llmConfig.tools);
 
       this.logger.debug(
         `[LlmRunner] Calling ${llmConfig.provider}/${llmConfig.model} for bot ${ctx.botId} (tools: ${tools.length}, messages: ${messages.length}, baseUrl: ${baseUrl})`,
@@ -170,13 +92,13 @@ export class LlmRunner {
           tools,
         );
       } else {
-        // 无工具 → 流式请求
+        // 无工具： 流式请求
         await this.streamChat(bot, ctx, baseUrl, apiKey, llmConfig, messages);
       }
-    } catch (err: unknown) {
+    } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
-      // Extract Axios response body for detailed diagnostics
+      // 提取 Axios 响应体来详细日志
       const axiosData =
         typeof err === 'object' &&
         err !== null &&
@@ -195,17 +117,6 @@ export class LlmRunner {
       await this.sendBotMessage(bot, ctx.channelId, userMessage);
     }
   }
-
-  // ── Tool 解析 ──
-
-  private resolveTools(toolIds?: LlmToolValue[]): OpenAITool[] {
-    if (!toolIds || toolIds.length === 0) return [];
-    return toolIds
-      .map((id) => TOOL_DEFINITIONS[id])
-      .filter((t): t is OpenAITool => !!t);
-  }
-
-  // ── 带工具调用的对话循环 ──
 
   private async chatWithTools(
     bot: BotDocument,
@@ -258,7 +169,11 @@ export class LlmRunner {
 
         // 执行每个工具调用
         for (const toolCall of assistantMessage.tool_calls) {
-          const toolResult = await this.executeTool(toolCall);
+          const toolResult = await this.toolExecutor.execute(
+            toolCall.function.name,
+            toolCall.function.arguments,
+            ctx,
+          );
           conversationMessages.push({
             role: 'tool',
             content: toolResult,
@@ -270,11 +185,11 @@ export class LlmRunner {
           );
         }
 
-        // 继续循环，让模型根据工具结果生成最终回复
+        // 继续循环
         continue;
       }
 
-      // 没有 tool_calls → 模型返回了最终文本回复
+      // 没有 tool_calls： 模型返回了最终文本回复
       const content = assistantMessage.content || '';
       if (content.trim()) {
         await this.sendBotMessage(bot, ctx.channelId, content);
@@ -291,113 +206,6 @@ export class LlmRunner {
       ctx.channelId,
       '⚠️ Response generation took too long. Please try again.',
     );
-  }
-
-  // ── 工具执行 ──
-
-  private async executeTool(toolCall: ToolCall): Promise<string> {
-    const { name, arguments: argsString } = toolCall.function;
-
-    let args: Record<string, unknown>;
-    try {
-      args = JSON.parse(argsString);
-    } catch {
-      return JSON.stringify({ error: 'Failed to parse tool arguments' });
-    }
-
-    try {
-      switch (name) {
-        case 'web_search':
-          return await this.toolWebSearch(args.query as string);
-        case 'execute_code':
-          return this.toolCodeExecution(
-            args.language as string,
-            args.code as string,
-          );
-        case 'generate_image':
-          return this.toolImageGeneration(args.prompt as string);
-        default:
-          return JSON.stringify({ error: `Unknown tool: ${name}` });
-      }
-    } catch (err: unknown) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      return JSON.stringify({ error: error.message });
-    }
-  }
-
-  private async toolWebSearch(query: string): Promise<string> {
-    try {
-      // 使用 DuckDuckGo Instant Answer API（无需 API Key）
-      const response = await this.httpService.axiosRef.get(
-        'https://api.duckduckgo.com/',
-        {
-          params: { q: query, format: 'json', no_html: 1, skip_disambig: 1 },
-          timeout: 10_000,
-        },
-      );
-
-      const data = response.data;
-      const results: string[] = [];
-
-      if (data.AbstractText) {
-        results.push(`**Summary:** ${data.AbstractText}`);
-        if (data.AbstractSource) results.push(`Source: ${data.AbstractSource}`);
-      }
-
-      if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-        const topics = data.RelatedTopics.slice(0, 5)
-          .filter((t: Record<string, unknown>) => t.Text)
-          .map((t: Record<string, unknown>) => `- ${t.Text}`);
-        if (topics.length > 0) {
-          results.push(`\n**Related:**\n${topics.join('\n')}`);
-        }
-      }
-
-      if (results.length === 0) {
-        return JSON.stringify({
-          result: `No instant results found for "${query}". The information may need to be searched through a full search engine.`,
-        });
-      }
-
-      return JSON.stringify({ result: results.join('\n') });
-    } catch {
-      return JSON.stringify({
-        result: `Web search for "${query}" is temporarily unavailable. Please answer based on your training data.`,
-      });
-    }
-  }
-
-  private toolCodeExecution(language: string, code: string): string {
-    // 安全考虑：不实际执行代码，而是返回格式化的代码供 LLM 分析
-    // 对于简单的纯数学表达式，使用 Function 构造器安全求值
-    if (language === 'javascript') {
-      try {
-        // 只允许纯数字、运算符、小数点、括号（无字符串、无变量、无函数调用）
-        const safePattern = /^[\d\s+\-*/().%]+$/;
-        if (safePattern.test(code) && code.length <= 200) {
-          const result = new Function(`"use strict"; return (${code})`)();
-          return JSON.stringify({
-            result: String(result),
-            executed: true,
-          });
-        }
-      } catch {
-        // fall through to formatted output
-      }
-    }
-
-    return JSON.stringify({
-      result: `Code (${language}):\n\`\`\`${language}\n${code}\n\`\`\`\n\nNote: For security reasons, only simple math expressions can be evaluated. Please analyze the code and provide the expected output.`,
-      executed: false,
-    });
-  }
-
-  private toolImageGeneration(prompt: string): string {
-    // 图像生成需要外部 API（如 DALL-E），返回提示信息
-    return JSON.stringify({
-      result: `Image generation for: "${prompt}" is not yet configured. Please describe the image in text instead.`,
-      note: 'To enable image generation, configure an image generation API separately.',
-    });
   }
 
   private buildMessages(
@@ -489,7 +297,7 @@ export class LlmRunner {
         await this.sendBotMessage(bot, ctx.channelId, accumulatedContent);
       }
     } catch {
-      // Emit stream end so frontend doesn't get stuck
+      // 流式请求失败后，发送一个结束事件通知前端停止等待
       const endPayload: BotStreamChunkPayload = {
         botId: ctx.botId,
         channelId: ctx.channelId,
@@ -655,7 +463,7 @@ export class LlmRunner {
       const errObj = resp.error as Record<string, unknown>;
       if (typeof errObj.message === 'string') return errObj.message;
     }
-    // Simple message field
+
     if (typeof resp.message === 'string') return resp.message;
     // Gemini format: { error: { message: '...' } } or { error_description: '...' }
     if (typeof resp.error_description === 'string')

@@ -121,6 +121,16 @@
   outline-color: hsl(var(--ring) / 0.5);
 }
 
+/* Hide scrollbars globally while preserving scroll functionality */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
