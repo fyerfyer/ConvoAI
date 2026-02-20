@@ -533,6 +533,58 @@ export class MemberService {
     return !!member;
   }
 
+  async muteMember(
+    guildId: string,
+    userId: string,
+    durationMinutes: number,
+  ): Promise<MemberDocument> {
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+
+    const mutedUntil = new Date(Date.now() + durationMinutes * 60 * 1000);
+
+    const updatedMember = await this.memberModel
+      .findOneAndUpdate(
+        { guild: guildObjectId, user: userObjectId },
+        { mutedUntil },
+        { new: true },
+      )
+      .populate('user');
+
+    if (!updatedMember) {
+      throw new NotFoundException('Member not found in guild');
+    }
+
+    this.logger.log('Member muted', {
+      guildId,
+      userId,
+      mutedUntil: mutedUntil.toISOString(),
+    });
+
+    return updatedMember;
+  }
+
+  async unmuteMember(guildId: string, userId: string): Promise<MemberDocument> {
+    const guildObjectId = this.toObjectId(guildId, 'guildId');
+    const userObjectId = this.toObjectId(userId, 'userId');
+
+    const updatedMember = await this.memberModel
+      .findOneAndUpdate(
+        { guild: guildObjectId, user: userObjectId },
+        { mutedUntil: null },
+        { new: true },
+      )
+      .populate('user');
+
+    if (!updatedMember) {
+      throw new NotFoundException('Member not found in guild');
+    }
+
+    this.logger.log('Member unmuted', { guildId, userId });
+
+    return updatedMember;
+  }
+
   public toMemberResponse(member: MemberDocument) {
     let userId = '';
     let userDetails = null;
@@ -560,6 +612,7 @@ export class MemberService {
       guildId: (member.guild as Types.ObjectId).toString(),
       roles: member.roles.map((r) => r.toString()),
       nickname: member.nickName,
+      mutedUntil: member.mutedUntil ? member.mutedUntil.toISOString() : null,
       joinedAt: member.joinedAt?.toISOString(),
       user: userDetails,
     };

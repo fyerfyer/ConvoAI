@@ -11,15 +11,32 @@ export interface UserResponse {
   user: IUserPublic;
 }
 
+// Role Response
+export interface RoleResponse {
+  id: string;
+  name: string;
+  permissions: number;
+  color: string;
+  position: number;
+  hoist: boolean;
+  mentionable: boolean;
+}
+
 // Guild Responses
 export interface GuildResponse {
   id: string;
   name: string;
   icon?: string;
   ownerId: string;
+  roles?: RoleResponse[];
   memberCount?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// Permission Response
+export interface PermissionResponse {
+  permissions: number;
 }
 
 export interface GuildListResponse {
@@ -66,6 +83,7 @@ export interface MemberResponse {
   guildId: string;
   roles: string[];
   nickname?: string;
+  mutedUntil?: string | null;
   joinedAt: string;
   user?: IUserPublic;
 }

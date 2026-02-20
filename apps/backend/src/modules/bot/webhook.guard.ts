@@ -7,11 +7,7 @@ import {
 } from '@nestjs/common';
 import { BotService } from './bot.service';
 
-/**
- * Guard for webhook endpoints.
- * Validates the webhook token from the URL path parameter.
- * Attaches the resolved Bot document to `request.bot`.
- */
+// 校验 Webhook 请求是否合法
 @Injectable()
 export class WebhookGuard implements CanActivate {
   constructor(private readonly botService: BotService) {}
@@ -27,12 +23,11 @@ export class WebhookGuard implements CanActivate {
     try {
       const bot = await this.botService.findByWebhookToken(token);
 
-      // Verify the botId matches
+      // 确保请求的 botId 与 token 对应的 bot 匹配
       if (bot._id.toString() !== botId) {
         throw new UnauthorizedException('Invalid webhook credentials');
       }
 
-      // Attach bot to request for use in controller
       request.bot = bot;
       return true;
     } catch (err) {

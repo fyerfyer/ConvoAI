@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, Settings2, Users } from 'lucide-react';
+import { Bot, Settings2, Users, Shield, UserCog } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,10 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import BotList from '@/components/bot/bot-list';
+import RoleSettingsPanel from '@/components/guild/role-settings-panel';
+import MemberSettingsPanel from '@/components/guild/member-settings-panel';
 import { GuildResponse } from '@discord-platform/shared';
+import { usePermissions } from '@/hooks/use-permission';
 
 interface GuildSettingsDialogProps {
   open: boolean;
@@ -22,9 +25,14 @@ export default function GuildSettingsDialog({
   open,
   onOpenChange,
   guild,
-  defaultTab = 'bots',
+  defaultTab = 'overview',
 }: GuildSettingsDialogProps) {
+  const { canManageRoles, canKickMembers } = usePermissions(guild?.id);
+
   if (!guild) return null;
+
+  const showRolesTab = canManageRoles;
+  const showMembersTab = canManageRoles || canKickMembers;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,16 +47,9 @@ export default function GuildSettingsDialog({
         <Tabs
           key={defaultTab}
           defaultValue={defaultTab}
-          className="flex-1 flex flex-col overflow-hidden"
+          className="flex-1 flex flex-col overflow-hidden min-w-0"
         >
-          <TabsList className="bg-gray-900 border-b border-gray-700 w-full justify-start rounded-none px-2">
-            <TabsTrigger
-              value="bots"
-              className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 gap-1.5"
-            >
-              <Bot className="h-4 w-4" />
-              Bots & Agents
-            </TabsTrigger>
+          <TabsList className="bg-gray-900 border-b border-gray-700 w-full justify-start rounded-none px-2 shrink-0 overflow-x-hidden">
             <TabsTrigger
               value="overview"
               className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 gap-1.5"
@@ -56,13 +57,34 @@ export default function GuildSettingsDialog({
               <Users className="h-4 w-4" />
               Overview
             </TabsTrigger>
+            {showRolesTab && (
+              <TabsTrigger
+                value="roles"
+                className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 gap-1.5"
+              >
+                <Shield className="h-4 w-4" />
+                Roles
+              </TabsTrigger>
+            )}
+            {showMembersTab && (
+              <TabsTrigger
+                value="members"
+                className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 gap-1.5"
+              >
+                <UserCog className="h-4 w-4" />
+                Members
+              </TabsTrigger>
+            )}
+            <TabsTrigger
+              value="bots"
+              className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 gap-1.5"
+            >
+              <Bot className="h-4 w-4" />
+              Bots & Agents
+            </TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-y-auto p-4">
-            <TabsContent value="bots" className="mt-0">
-              <BotList guildId={guild.id} />
-            </TabsContent>
-
             <TabsContent value="overview" className="mt-0">
               <div className="space-y-4">
                 <div>
@@ -89,6 +111,22 @@ export default function GuildSettingsDialog({
                   </div>
                 </div>
               </div>
+            </TabsContent>
+
+            {showRolesTab && (
+              <TabsContent value="roles" className="mt-0">
+                <RoleSettingsPanel guild={guild} />
+              </TabsContent>
+            )}
+
+            {showMembersTab && (
+              <TabsContent value="members" className="mt-0">
+                <MemberSettingsPanel guild={guild} />
+              </TabsContent>
+            )}
+
+            <TabsContent value="bots" className="mt-0">
+              <BotList guildId={guild.id} />
             </TabsContent>
           </div>
         </Tabs>

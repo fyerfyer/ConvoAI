@@ -303,10 +303,7 @@ export class GuildService {
 
     while (attempt < MAX_RETRIES) {
       try {
-        const guild = await this.guildModel
-          .findById(guildId)
-          .select('roles')
-          .session(session);
+        const guild = await this.guildModel.findById(guildId).session(session);
         if (!guild) {
           throw new NotFoundException('Guild not found');
         }
@@ -437,6 +434,15 @@ export class GuildService {
       name: guild.name,
       icon: guild.icon,
       ownerId: guild.owner.toString(),
+      roles: (guild.roles || []).map((r) => ({
+        id: r._id.toString(),
+        name: r.name,
+        permissions: r.permissions,
+        color: r.color,
+        position: r.position,
+        hoist: r.hoist,
+        mentionable: r.mentionable,
+      })),
       createdAt: guild.createdAt.toISOString(),
       updatedAt: guild.updatedAt.toISOString(),
     };
@@ -451,8 +457,6 @@ export class GuildService {
       memberCount,
     };
   }
-
-  // ─── Guild Search ──────────────────────────────────────────
 
   async searchGuilds(
     query: string,
@@ -469,8 +473,6 @@ export class GuildService {
     return { guilds, total };
   }
 
-  // ─── Join Guild ────────────────────────────────────────────
-
   async joinGuild(guildId: string, userId: string) {
     this.logger.log('User joining guild', { guildId, userId });
     const guild = await this.getGuildById(guildId);
@@ -482,8 +484,6 @@ export class GuildService {
     this.logger.log('User joined guild successfully', { guildId, userId });
     return guild;
   }
-
-  // ─── Invite System ─────────────────────────────────────────
 
   private generateInviteCode(): string {
     return crypto.randomBytes(4).toString('hex');

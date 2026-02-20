@@ -231,8 +231,6 @@ export class BotService {
         currentConfig.temperature = dto.llmConfig.temperature;
       if (dto.llmConfig.maxTokens !== undefined)
         currentConfig.maxTokens = dto.llmConfig.maxTokens;
-      if (dto.llmConfig.tools !== undefined)
-        currentConfig.tools = dto.llmConfig.tools;
       if (dto.llmConfig.customBaseUrl !== undefined)
         currentConfig.customBaseUrl = dto.llmConfig.customBaseUrl;
       if (dto.llmConfig.apiKey !== undefined) {

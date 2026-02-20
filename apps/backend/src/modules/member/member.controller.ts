@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Patch,
+  Post,
   UseGuards,
   NotFoundException,
   ForbiddenException,
@@ -20,6 +21,7 @@ import {
   JwtPayload,
   MemberListResponse,
   MemberResponse,
+  PermissionResponse,
   PERMISSIONS,
 } from '@discord-platform/shared';
 
@@ -46,6 +48,22 @@ export class MemberController {
       data: {
         members: members.map((m) => this.memberService.toMemberResponse(m)),
       },
+      statusCode: HttpStatus.OK,
+    };
+  }
+
+  // ─── Get my permissions in this guild ──────────────────────
+  @Get('@me/permissions')
+  async getMyPermissions(
+    @Param('guildId') guildId: string,
+    @User() user: JwtPayload,
+  ): Promise<ApiResponse<PermissionResponse>> {
+    const permissions = await this.memberService.getMemberPermissions(
+      guildId,
+      user.sub,
+    );
+    return {
+      data: { permissions },
       statusCode: HttpStatus.OK,
     };
   }
@@ -116,6 +134,79 @@ export class MemberController {
     return {
       statusCode: HttpStatus.OK,
       message: 'Member kicked successfully',
+    };
+  }
+
+  @Post(':userId/roles/:roleId')
+  @RequirePermissions(PERMISSIONS.MANAGE_ROLES)
+  async addRoleToMember(
+    @Param('guildId') guildId: string,
+    @Param('userId') userId: string,
+    @Param('roleId') roleId: string,
+  ): Promise<ApiResponse<MemberResponse>> {
+    const member = await this.memberService.addRoleToMember(
+      guildId,
+      userId,
+      roleId,
+    );
+    const populated = await member.populate('user');
+    return {
+      data: this.memberService.toMemberResponse(populated),
+      statusCode: HttpStatus.OK,
+      message: 'Role assigned successfully',
+    };
+  }
+
+  @Delete(':userId/roles/:roleId')
+  @RequirePermissions(PERMISSIONS.MANAGE_ROLES)
+  async removeRoleFromMember(
+    @Param('guildId') guildId: string,
+    @Param('userId') userId: string,
+    @Param('roleId') roleId: string,
+  ): Promise<ApiResponse<MemberResponse>> {
+    const member = await this.memberService.removeRoleFromMember(
+      guildId,
+      userId,
+      roleId,
+    );
+    const populated = await member.populate('user');
+    return {
+      data: this.memberService.toMemberResponse(populated),
+      statusCode: HttpStatus.OK,
+      message: 'Role removed successfully',
+    };
+  }
+
+  @Post(':userId/mute')
+  @RequirePermissions(PERMISSIONS.MUTE_MEMBERS)
+  async muteMember(
+    @Param('guildId') guildId: string,
+    @Param('userId') userId: string,
+    @Body('duration') duration: number,
+  ): Promise<ApiResponse<MemberResponse>> {
+    const member = await this.memberService.muteMember(
+      guildId,
+      userId,
+      duration,
+    );
+    return {
+      data: this.memberService.toMemberResponse(member),
+      statusCode: HttpStatus.OK,
+      message: 'Member muted successfully',
+    };
+  }
+
+  @Delete(':userId/mute')
+  @RequirePermissions(PERMISSIONS.MUTE_MEMBERS)
+  async unmuteMember(
+    @Param('guildId') guildId: string,
+    @Param('userId') userId: string,
+  ): Promise<ApiResponse<MemberResponse>> {
+    const member = await this.memberService.unmuteMember(guildId, userId);
+    return {
+      data: this.memberService.toMemberResponse(member),
+      statusCode: HttpStatus.OK,
+      message: 'Member unmuted successfully',
     };
   }
 }

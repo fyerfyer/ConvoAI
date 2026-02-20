@@ -80,6 +80,58 @@ export function useKickMember() {
   });
 }
 
+// Mute member
+export function useMuteMember() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      guildId,
+      userId,
+      duration,
+    }: {
+      guildId: string;
+      userId: string;
+      duration: number; // minutes
+    }) => {
+      const response = await api.post<ApiResponse<MemberResponse>>(
+        `/guilds/${guildId}/members/${userId}/mute`,
+        { duration },
+      );
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: memberKeys.byGuild(variables.guildId),
+      });
+    },
+  });
+}
+
+// Unmute member
+export function useUnmuteMember() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      guildId,
+      userId,
+    }: {
+      guildId: string;
+      userId: string;
+    }) => {
+      await api.delete<ApiResponse<null>>(
+        `/guilds/${guildId}/members/${userId}/mute`,
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: memberKeys.byGuild(variables.guildId),
+      });
+    },
+  });
+}
+
 // Leave guild
 export function useLeaveGuild() {
   const queryClient = useQueryClient();

@@ -26,6 +26,9 @@ export class Member {
   @Prop({ type: [Types.ObjectId], default: [] })
   roles: Types.ObjectId[]; // 拥有的角色 ID 列表，具体去 Guild 中查
 
+  @Prop({ type: Date, default: null })
+  mutedUntil?: Date | null; // 禁言截止时间，null 表示未禁言
+
   @Prop({ default: Date.now })
   joinedAt: Date;
 }

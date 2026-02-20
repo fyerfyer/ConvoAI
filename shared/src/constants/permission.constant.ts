@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   // 管理权限
   KICK_MEMBERS: 1 << 9, // 512
   BAN_MEMBERS: 1 << 10, // 1024
+  MUTE_MEMBERS: 1 << 11, // 2048
   ADMINISTRATOR: 1 << 30, // 拥有此权限则无视所有限制
 } as const;
 

@@ -12,6 +12,7 @@ import {
   UserPlus,
   Bot,
   Cpu,
+  Shield,
 } from 'lucide-react';
 import {
   DndContext,
@@ -53,6 +54,7 @@ import InviteMemberDialog from '@/components/guild/invite-member-dialog';
 import GuildSettingsDialog from '@/components/guild/guild-settings-dialog';
 import CreateBotDialog from '@/components/bot/create-bot-dialog';
 import { useBots } from '@/hooks/use-bot';
+import { usePermissions } from '@/hooks/use-permission';
 import { CHANNEL, ChannelResponse, BOT_STATUS } from '@discord-platform/shared';
 
 export default function ChannelSidebar() {
@@ -96,6 +98,9 @@ export default function ChannelSidebar() {
 
   // Bots query
   const { data: bots = [] } = useBots(guildId);
+
+  // Permissions
+  const { canManageRoles } = usePermissions(guildId);
   const activeBots = bots.filter((b) => b.status === BOT_STATUS.ACTIVE);
 
   // DnD state
@@ -276,6 +281,21 @@ export default function ChannelSidebar() {
               <Bot className="h-4 w-4" />
               Manage Bots & Agents
             </DropdownMenuItem>
+            {canManageRoles && (
+              <>
+                <DropdownMenuSeparator className="bg-gray-700" />
+                <DropdownMenuItem
+                  className="text-gray-300 hover:text-white focus:text-white gap-2"
+                  onClick={() => {
+                    setSettingsDefaultTab('roles');
+                    setSettingsOpen(true);
+                  }}
+                >
+                  <Shield className="h-4 w-4" />
+                  Roles & Permissions
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator className="bg-gray-700" />
             <DropdownMenuItem
               className="text-gray-300 hover:text-white focus:text-white gap-2"
