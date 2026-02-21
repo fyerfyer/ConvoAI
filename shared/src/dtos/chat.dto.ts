@@ -5,17 +5,28 @@ export const attachmentShema = z.object({
   url: z.url(),
   contentType: z.string().min(1),
   size: z.number().nonnegative(),
+  duration: z.number().nonnegative().optional(),
 });
 
 export type AttachmentDto = z.infer<typeof attachmentShema>;
 
-export const createMessageDTOSchema = z.object({
-  channelId: z.string(),
-  content: z.string().min(1).max(4000),
-  replyTo: z.string().optional(),
-  nonce: z.string().optional(),
-  attachments: z.array(attachmentShema).optional(),
-});
+export const createMessageDTOSchema = z
+  .object({
+    channelId: z.string(),
+    content: z.string().max(4000).default(''),
+    replyTo: z.string().optional(),
+    nonce: z.string().optional(),
+    attachments: z.array(attachmentShema).optional(),
+  })
+  .refine(
+    (data) =>
+      (data.content && data.content.trim().length > 0) ||
+      (data.attachments && data.attachments.length > 0),
+    {
+      message: 'Message must have content or at least one attachment',
+      path: ['content'],
+    },
+  );
 
 export type CreateMessageDTO = z.infer<typeof createMessageDTOSchema>;
 

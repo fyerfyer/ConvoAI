@@ -185,4 +185,45 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .to(payload.channelId)
       .emit(SOCKET_EVENT.BOT_STREAM_END, payload);
   }
+
+  // Voice Events
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage(SOCKET_EVENT.VOICE_JOIN)
+  async handleVoiceJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channelId: string },
+  ) {
+    const user: JwtPayload = client.data.user;
+    const voiceRoom = `voice:${payload.channelId}`;
+    await client.join(voiceRoom);
+
+    this.server.to(voiceRoom).emit(SOCKET_EVENT.VOICE_STATE_UPDATE, {
+      channelId: payload.channelId,
+      userId: user.sub,
+      name: user.name,
+      action: 'joined',
+    });
+
+    return { status: 'joined', channelId: payload.channelId };
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage(SOCKET_EVENT.VOICE_LEAVE)
+  async handleVoiceLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channelId: string },
+  ) {
+    const user: JwtPayload = client.data.user;
+    const voiceRoom = `voice:${payload.channelId}`;
+
+    this.server.to(voiceRoom).emit(SOCKET_EVENT.VOICE_STATE_UPDATE, {
+      channelId: payload.channelId,
+      userId: user.sub,
+      name: user.name,
+      action: 'left',
+    });
+
+    await client.leave(voiceRoom);
+    return { status: 'left', channelId: payload.channelId };
+  }
 }

@@ -1,5 +1,7 @@
 'use client';
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { EmbedResponse } from '@discord-platform/shared';
 
 interface EmbedRendererProps {
@@ -10,8 +12,15 @@ function intToHex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
 }
 
+/** Detect if description contains markdown formatting worth rendering */
+function hasMarkdown(text: string): boolean {
+  return /(\*\*|__|~~|```|`[^`]+`|\[.+\]\(.+\)|^#{1,3}\s|^[-*]\s|^\d+\.\s)/m.test(
+    text,
+  );
+}
+
 export default function EmbedRenderer({ embed }: EmbedRendererProps) {
-  const borderColor = embed.color ? intToHex(embed.color) : '#5865F2'; // Discord blurple
+  const borderColor = embed.color ? intToHex(embed.color) : '#5865F2';
 
   return (
     <div
@@ -19,7 +28,50 @@ export default function EmbedRenderer({ embed }: EmbedRendererProps) {
       style={{ borderLeft: `4px solid ${borderColor}` }}
     >
       <div className="p-3">
-        {/* Author row (could be added later) */}
+        {/* Provider name */}
+        {embed.provider && (
+          <div className="text-[11px] text-gray-500 uppercase font-semibold mb-1">
+            {embed.provider.url ? (
+              <a
+                href={embed.provider.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                {embed.provider.name}
+              </a>
+            ) : (
+              embed.provider.name
+            )}
+          </div>
+        )}
+
+        {/* Author row */}
+        {embed.author && (
+          <div className="flex items-center gap-2 mb-1.5">
+            {embed.author.icon_url && (
+              <img
+                src={embed.author.icon_url}
+                alt=""
+                className="h-6 w-6 rounded-full"
+              />
+            )}
+            {embed.author.url ? (
+              <a
+                href={embed.author.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-white hover:underline"
+              >
+                {embed.author.name}
+              </a>
+            ) : (
+              <span className="text-sm font-semibold text-white">
+                {embed.author.name}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-4">
           {/* Main content area */}
@@ -44,11 +96,62 @@ export default function EmbedRenderer({ embed }: EmbedRendererProps) {
               </div>
             )}
 
-            {/* Description */}
+            {/* Description - with markdown support */}
             {embed.description && (
-              <p className="text-sm text-gray-300 whitespace-pre-wrap break-words mb-2">
-                {embed.description}
-              </p>
+              <div className="text-sm text-gray-300 break-words mb-2">
+                {hasMarkdown(embed.description) ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => (
+                        <p className="mb-1 last:mb-0">{children}</p>
+                      ),
+                      a: ({ href, children }) => (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline"
+                        >
+                          {children}
+                        </a>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="font-bold text-white">
+                          {children}
+                        </strong>
+                      ),
+                      em: ({ children }) => (
+                        <em className="italic">{children}</em>
+                      ),
+                      code: ({ className, children, ...props }) => {
+                        const isInline = !className;
+                        return isInline ? (
+                          <code className="bg-gray-900 px-1 py-0.5 rounded text-[13px] text-gray-100">
+                            {children}
+                          </code>
+                        ) : (
+                          <code
+                            className={`${className || ''} text-[13px]`}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        );
+                      },
+                      pre: ({ children }) => (
+                        <pre className="bg-gray-900 rounded p-2 overflow-x-auto my-1 text-[13px]">
+                          {children}
+                        </pre>
+                      ),
+                    }}
+                  >
+                    {embed.description}
+                  </ReactMarkdown>
+                ) : (
+                  <p className="whitespace-pre-wrap">{embed.description}</p>
+                )}
+              </div>
             )}
 
             {/* Fields */}

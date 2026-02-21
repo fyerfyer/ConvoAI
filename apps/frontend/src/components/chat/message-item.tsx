@@ -1,10 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download, FileIcon, Play, Bot } from 'lucide-react';
+import { Download, FileIcon, Play, Bot, Reply, Mic } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import EmbedRenderer from './embed-renderer';
-import { MessageResponse } from '@discord-platform/shared';
+import MessageContent from './message-content';
+import AudioPlayer from './audio-player';
+import SystemMessage from './system-message';
+import { MessageResponse, MESSAGE_TYPE } from '@discord-platform/shared';
 import { cn } from '@/lib/utils';
 
 interface MessageItemProps {
@@ -40,45 +43,6 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-function renderMessageContent(content: string) {
-  const mentionRegex = /@([^\s@]+)/g;
-  const parts: Array<{ text: string; mention: boolean }> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = mentionRegex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({
-        text: content.slice(lastIndex, match.index),
-        mention: false,
-      });
-    }
-    parts.push({ text: match[0], mention: true });
-    lastIndex = mentionRegex.lastIndex;
-  }
-
-  if (lastIndex < content.length) {
-    parts.push({ text: content.slice(lastIndex), mention: false });
-  }
-
-  if (parts.length === 0) {
-    return content;
-  }
-
-  return parts.map((part, index) => (
-    <span
-      key={`${part.text}-${index}`}
-      className={
-        part.mention
-          ? 'rounded bg-indigo-500/20 px-1 text-indigo-200'
-          : undefined
-      }
-    >
-      {part.text}
-    </span>
-  ));
-}
-
 export default function MessageItem({
   message,
   currentUserId,
@@ -89,6 +53,12 @@ export default function MessageItem({
   );
   const isOwnMessage = !!currentUserId && message.author.id === currentUserId;
   const authorDisplayName = message.author.nickname || message.author.name;
+  const isVoiceMessage = message.type === MESSAGE_TYPE.VOICE;
+
+  // Handle system messages
+  if (message.type === MESSAGE_TYPE.SYSTEM) {
+    return <SystemMessage message={message} />;
+  }
 
   return (
     <div
@@ -96,6 +66,7 @@ export default function MessageItem({
         'group flex items-start py-2 pl-4 pr-12 hover:bg-gray-800/30 mt-4 first:mt-0',
         isOwnMessage &&
           'bg-indigo-500/10 hover:bg-indigo-500/15 border-l-2 border-indigo-400',
+        isVoiceMessage && 'bg-green-500/5',
       )}
     >
       <Avatar className="h-10 w-10 mr-4 shrink-0 mt-0.5">
@@ -114,6 +85,19 @@ export default function MessageItem({
         </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
+        {/* Reply context */}
+        {message.replyTo && (
+          <div className="flex items-center gap-1.5 mb-1 text-xs text-gray-400">
+            <Reply className="h-3 w-3 rotate-180" />
+            <span className="font-medium text-gray-300">
+              {message.replyTo.author?.name || 'Unknown'}
+            </span>
+            <span className="truncate max-w-[300px] text-gray-500">
+              {message.replyTo.content}
+            </span>
+          </div>
+        )}
+
         <div className="flex items-baseline gap-2">
           <span
             className={cn(
@@ -132,11 +116,19 @@ export default function MessageItem({
               Bot
             </span>
           )}
+          {isVoiceMessage && (
+            <span className="flex items-center gap-1 rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-green-300 uppercase">
+              <Mic className="h-2.5 w-2.5" />
+              Voice
+            </span>
+          )}
           <span className="text-[11px] text-gray-500">{timestamp}</span>
         </div>
-        <p className="text-sm text-gray-200 break-words whitespace-pre-wrap mt-0.5">
-          {renderMessageContent(message.content)}
-        </p>
+
+        {/* Message content - use markdown renderer */}
+        {message.content && <MessageContent content={message.content} />}
+
+        {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (
           <div className="mt-1 space-y-1">
             {message.attachments.map((att, idx) => (
@@ -144,6 +136,8 @@ export default function MessageItem({
             ))}
           </div>
         )}
+
+        {/* Embeds */}
         {message.embeds && message.embeds.length > 0 && (
           <div className="mt-1 space-y-1">
             {message.embeds.map((embed, idx) => (
@@ -166,6 +160,17 @@ function AttachmentPreview({ attachment }: AttachmentPreviewProps) {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  // Audio attachment - use custom AudioPlayer
+  if (attachment.type === 'audio') {
+    return (
+      <AudioPlayer
+        url={attachment.url}
+        duration={attachment.duration}
+        filename={attachment.filename}
+      />
+    );
+  }
 
   if (attachment.type === 'image') {
     return (

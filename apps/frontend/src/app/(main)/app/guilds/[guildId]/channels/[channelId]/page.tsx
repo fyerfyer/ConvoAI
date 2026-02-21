@@ -54,6 +54,7 @@ export default function ChannelPage() {
       <ChatArea
         channelId={channelId}
         channelName={channel.name}
+        channelType={channel.type}
         guildId={guildId}
         onToggleMembers={() => setShowMembers((prev) => !prev)}
         showMemberToggle

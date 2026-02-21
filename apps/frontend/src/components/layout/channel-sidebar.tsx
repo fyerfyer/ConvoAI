@@ -55,6 +55,7 @@ import GuildSettingsDialog from '@/components/guild/guild-settings-dialog';
 import CreateBotDialog from '@/components/bot/create-bot-dialog';
 import { useBots } from '@/hooks/use-bot';
 import { usePermissions } from '@/hooks/use-permission';
+import VoiceStatusBar from '@/components/voice/voice-status-bar';
 import { CHANNEL, ChannelResponse, BOT_STATUS } from '@discord-platform/shared';
 
 export default function ChannelSidebar() {
@@ -170,7 +171,7 @@ export default function ChannelSidebar() {
   const handleRename = (channelId: string, newName: string) => {
     updateChannel.mutate({
       channelId,
-      guildId: guildId!,
+      guildId: guildId,
       data: { name: newName },
     });
   };
@@ -178,7 +179,7 @@ export default function ChannelSidebar() {
   const handleMove = (channel: ChannelResponse, categoryId: string | null) => {
     updateChannel.mutate({
       channelId: channel.id,
-      guildId: guildId!,
+      guildId: guildId,
       data: { parentId: categoryId },
     });
   };
@@ -187,7 +188,7 @@ export default function ChannelSidebar() {
     if (confirm(`Are you sure you want to delete #${channel.name}?`)) {
       deleteChannel.mutate({
         channelId: channel.id,
-        guildId: guildId!,
+        guildId: guildId,
       });
     }
   };
@@ -214,7 +215,7 @@ export default function ChannelSidebar() {
       if (channel.parentId !== category.id) {
         updateChannel.mutate({
           channelId: channel.id,
-          guildId: guildId!,
+          guildId: guildId,
           data: { parentId: category.id },
         });
       }
@@ -477,6 +478,9 @@ export default function ChannelSidebar() {
             Create Channel
           </Button>
         </div>
+
+        {/* Voice Status Bar */}
+        <VoiceStatusBar />
       </div>
 
       {/* Dialogs */}

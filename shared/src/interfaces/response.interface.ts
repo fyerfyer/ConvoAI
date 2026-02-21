@@ -1,5 +1,6 @@
 import { ChannelValue } from '../constants/channel.contant';
 import { AttachmentValue } from '../constants/chat.constant';
+import { MessageTypeValue } from '../constants/chat.constant';
 import { IUserPublic, IUserSummary } from './user.interface';
 
 export interface AuthResponse {
@@ -105,6 +106,7 @@ export interface AttachmentResponse {
   url: string;
   filename: string;
   size: number;
+  duration?: number; // audio/video duration in seconds
 }
 
 export interface EmbedFieldResponse {
@@ -118,11 +120,24 @@ export interface EmbedFooterResponse {
   icon_url?: string;
 }
 
+export interface EmbedAuthorResponse {
+  name: string;
+  url?: string;
+  icon_url?: string;
+}
+
+export interface EmbedProviderResponse {
+  name: string;
+  url?: string;
+}
+
 export interface EmbedResponse {
   title?: string;
   description?: string;
   url?: string;
   color?: number;
+  author?: EmbedAuthorResponse;
+  provider?: EmbedProviderResponse;
   image?: { url: string };
   thumbnail?: { url: string };
   fields?: EmbedFieldResponse[];
@@ -134,9 +149,15 @@ export interface MessageResponse {
   id: string;
   content: string;
   channelId: string;
+  type: MessageTypeValue;
   author: IUserSummary;
   attachments?: AttachmentResponse[];
   embeds?: EmbedResponse[];
+  replyTo?: {
+    id: string;
+    content: string;
+    author: IUserSummary;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -175,4 +196,23 @@ export interface BotResponse {
 
 export interface BotListResponse {
   bots: BotResponse[];
+}
+
+// Voice
+export interface VoiceTokenResponse {
+  token: string;
+  url: string;
+}
+
+export interface VoiceParticipant {
+  userId: string;
+  name: string;
+  avatar: string | null;
+  isMuted: boolean;
+  isSpeaking: boolean;
+}
+
+export interface VoiceStateResponse {
+  channelId: string;
+  participants: VoiceParticipant[];
 }

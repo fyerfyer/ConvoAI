@@ -19,6 +19,9 @@ export class Attachment {
 
   @Prop({ type: Number })
   height?: number;
+
+  @Prop({ type: Number })
+  duration?: number;
 }
 
 export const attachmentSchema = SchemaFactory.createForClass(Attachment);

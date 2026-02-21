@@ -16,7 +16,7 @@ export type MessageModel = Model<MessageDocument>;
 
 @Schema({ timestamps: true })
 export class Message {
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, default: '' })
   content: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })

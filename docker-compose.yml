@@ -99,6 +99,22 @@ services:
       timeout: 5s
       retries: 5
 
+  livekit:
+    image: livekit/livekit-server:latest
+    ports:
+      - '7880:7880'
+      - '7881:7881'
+      - '7882:7882/udp'
+    environment:
+      LIVEKIT_KEYS: 'devkey: secret'
+    command: --dev --bind 0.0.0.0
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:7880']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 volumes:
   mongo_data:
   redis_data:

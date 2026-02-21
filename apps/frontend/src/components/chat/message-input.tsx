@@ -8,12 +8,13 @@ import {
   useMemo,
   useEffect,
 } from 'react';
-import { Send, PlusCircle, X, FileIcon, Bot } from 'lucide-react';
+import { Send, PlusCircle, X, FileIcon, Bot, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AttachmentDto, MAX_ATTACHMENT_SIZE } from '@discord-platform/shared';
 import { toast } from '@/hooks/use-toast';
 import { useMembers } from '@/hooks/use-member';
 import { useBots } from '@/hooks/use-bot';
+import AudioRecorder from './audio-recorder';
 
 interface PendingFile {
   file: File;
@@ -41,6 +42,7 @@ export default function MessageInput({
 }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [showRecorder, setShowRecorder] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStart, setMentionStart] = useState<number | null>(null);
@@ -277,6 +279,32 @@ export default function MessageInput({
     closeMention,
   ]);
 
+  const handleRecordingComplete = useCallback(
+    async (blob: Blob, durationSec: number) => {
+      if (!onFilesSelected) return;
+      const file = new File([blob], `voice-message-${Date.now()}.webm`, {
+        type: 'audio/webm',
+      });
+      try {
+        const attachments = await onFilesSelected([file]);
+        // Add duration to the attachment dto
+        const attachmentsWithDuration = attachments.map((att) => ({
+          ...att,
+          duration: Math.round(durationSec),
+        }));
+        onSendMessage('', attachmentsWithDuration);
+        setShowRecorder(false);
+      } catch {
+        toast({
+          variant: 'destructive',
+          title: 'Upload Error',
+          description: 'Failed to upload voice message',
+        });
+      }
+    },
+    [onFilesSelected, onSendMessage],
+  );
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mentionOpen && mentionCandidates.length > 0) {
@@ -393,6 +421,16 @@ export default function MessageInput({
 
   return (
     <div className="px-4 pb-4 pt-2">
+      {/* Voice Recorder */}
+      {showRecorder && (
+        <div className="mb-2">
+          <AudioRecorder
+            onRecordingComplete={handleRecordingComplete}
+            onCancel={() => setShowRecorder(false)}
+          />
+        </div>
+      )}
+
       {/* Pending Files Preview */}
       {pendingFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 rounded-t-lg bg-gray-600 px-4 py-3">
@@ -438,7 +476,9 @@ export default function MessageInput({
         </div>
       )}
 
-      <div className={`relative flex items-end bg-gray-600 px-4 py-2 transition-colors focus-within:ring-1 focus-within:ring-indigo-500 ${pendingFiles.length > 0 ? 'rounded-b-lg' : 'rounded-lg'}`}>
+      <div
+        className={`relative flex items-end bg-gray-600 px-4 py-2 transition-colors focus-within:ring-1 focus-within:ring-indigo-500 ${pendingFiles.length > 0 ? 'rounded-b-lg' : 'rounded-lg'}`}
+      >
         {mentionOpen && (
           <div className="absolute bottom-full left-4 right-4 mb-2 rounded-md border border-gray-600 bg-gray-800 shadow-lg overflow-hidden z-20">
             {mentionCandidates.length > 0 ? (
@@ -512,6 +552,16 @@ export default function MessageInput({
           rows={1}
           disabled={disabled || isUploading}
         />
+        {/* Voice Record Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-8 w-8 shrink-0 mb-0.5 ${showRecorder ? 'text-red-400 hover:text-red-300' : 'text-gray-400 hover:text-gray-200'}`}
+          disabled={disabled || isUploading}
+          onClick={() => setShowRecorder((prev) => !prev)}
+        >
+          <Mic className="h-5 w-5" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"

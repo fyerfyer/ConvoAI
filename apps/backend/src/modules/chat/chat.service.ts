@@ -17,6 +17,7 @@ import {
   CreateMessageDTO,
   MAX_ATTACHMENT_SIZE,
   MESSAGE_EVENT,
+  MESSAGE_TYPE,
 } from '@discord-platform/shared';
 import { ClientSession, Types, Document } from 'mongoose';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
@@ -60,6 +61,7 @@ export class ChatService {
         url: att.url,
         contentType: att.contentType,
         size: att.size,
+        duration: att.duration,
       })),
     });
 
@@ -67,7 +69,11 @@ export class ChatService {
 
     const populatedMessage = await message.populate([
       { path: 'sender', select: 'name avatar isBot' },
-      { path: 'replyTo', select: 'content sender' },
+      {
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      },
     ]);
 
     this.eventEmitter.emit(MESSAGE_EVENT.CREATE_MESSAGE, populatedMessage);
@@ -92,7 +98,11 @@ export class ChatService {
       .sort({ _id: -1 })
       .limit(limit)
       .populate('sender', 'name avatar isBot')
-      .populate('replyTo', 'content sender')
+      .populate({
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      })
       .exec();
   }
   async populateMessage(message: MessageDocument): Promise<MessageDocument> {
@@ -105,7 +115,11 @@ export class ChatService {
     return this.messageModel
       .findById(message._id)
       .populate('sender', 'name avatar isBot')
-      .populate('replyTo', 'content sender')
+      .populate({
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      })
       .exec() as Promise<MessageDocument>;
   }
 
@@ -122,10 +136,59 @@ export class ChatService {
 
     const sender = populatedMessage.sender;
 
+    // Build replyTo response
+    let replyToResponse:
+      | {
+          id: string;
+          content: string;
+          author: {
+            id: string;
+            name: string;
+            avatar: string | null;
+            isBot: boolean;
+          };
+        }
+      | undefined;
+    if (
+      populatedMessage.replyTo &&
+      populatedMessage.replyTo instanceof Document
+    ) {
+      const replyMsg = populatedMessage.replyTo;
+      const replySender = replyMsg.sender;
+      if (replySender && replySender instanceof Document) {
+        replyToResponse = {
+          id: replyMsg._id.toString(),
+          content: replyMsg.content,
+          author: {
+            id: replySender._id.toString(),
+            name: replySender.name,
+            avatar: replySender.avatar,
+            isBot: replySender.isBot,
+          },
+        };
+      } else {
+        replyToResponse = {
+          id: replyMsg._id.toString(),
+          content: replyMsg.content,
+          author: { id: '', name: 'Unknown', avatar: null, isBot: false },
+        };
+      }
+    }
+
+    // Determine message type
+    const messageType = populatedMessage.isSystem
+      ? MESSAGE_TYPE.SYSTEM
+      : populatedMessage.attachments.some((a) =>
+            a.contentType.startsWith('audio/'),
+          )
+        ? MESSAGE_TYPE.VOICE
+        : MESSAGE_TYPE.DEFAULT;
+
     return {
       id: populatedMessage._id.toString(),
       content: populatedMessage.content,
       channelId: (populatedMessage.channelId as Types.ObjectId).toString(),
+      type: messageType,
       author: {
         id: sender._id.toString(),
         name: sender.name,
@@ -151,11 +214,14 @@ export class ChatService {
             url,
             filename: att.filename,
             size: att.size,
+            duration: att.duration,
             type: (att.contentType.startsWith('image/')
               ? 'image'
               : att.contentType.startsWith('video/')
                 ? 'video'
-                : 'file') as AttachmentValue,
+                : att.contentType.startsWith('audio/')
+                  ? 'audio'
+                  : 'file') as AttachmentValue,
           };
         }),
       ),
@@ -175,6 +241,7 @@ export class ChatService {
           : undefined,
         timestamp: emb.timestamp?.toISOString(),
       })),
+      replyTo: replyToResponse,
       createdAt: populatedMessage.createdAt?.toISOString(),
       updatedAt: populatedMessage.updatedAt?.toISOString(),
     };

@@ -20,3 +20,4 @@ export * from './constants/chat.constant';
 export * from './dtos/bot.dto';
 export * from './constants/bot.constant';
 export * from './interfaces/bot.interface';
+export * from './dtos/voice.dto';

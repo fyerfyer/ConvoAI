@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useCallback, useRef } from 'react';
-import { Hash, Users } from 'lucide-react';
+import { Hash, Volume2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import MessageList from './message-list';
 import MessageInput from './message-input';
@@ -11,11 +11,18 @@ import { useChatStore } from '@/stores/chat-store';
 import { useCurrentUser } from '@/hooks/use-auth';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { useMembers } from '@/hooks/use-member';
-import { MessageResponse, AttachmentDto } from '@discord-platform/shared';
+import VoiceChannelPanel from '@/components/voice/voice-channel-panel';
+import {
+  MessageResponse,
+  AttachmentDto,
+  CHANNEL,
+  ChannelValue,
+} from '@discord-platform/shared';
 
 interface ChatAreaProps {
   channelId: string;
   channelName: string;
+  channelType?: ChannelValue;
   guildId: string;
   onToggleMembers?: () => void;
   showMemberToggle?: boolean;
@@ -24,6 +31,7 @@ interface ChatAreaProps {
 export default function ChatArea({
   channelId,
   channelName,
+  channelType,
   guildId,
   onToggleMembers,
   showMemberToggle = true,
@@ -122,12 +130,18 @@ export default function ChatArea({
     [channelId, sendTyping],
   );
 
+  const isVoiceChannel = channelType === CHANNEL.GUILD_VOICE;
+
   return (
     <div className="flex-1 flex flex-col bg-gray-700 min-h-0">
       {/* Channel Header */}
       <div className="flex h-12 items-center justify-between px-4 shadow-md bg-gray-700 border-b border-gray-600">
         <div className="flex items-center">
-          <Hash className="mr-2 h-5 w-5 text-gray-400" />
+          {isVoiceChannel ? (
+            <Volume2 className="mr-2 h-5 w-5 text-gray-400" />
+          ) : (
+            <Hash className="mr-2 h-5 w-5 text-gray-400" />
+          )}
           <h3 className="font-semibold text-white">{channelName}</h3>
         </div>
         {showMemberToggle && (
@@ -141,6 +155,15 @@ export default function ChatArea({
           </Button>
         )}
       </div>
+
+      {/* Voice Channel Panel */}
+      {isVoiceChannel && (
+        <VoiceChannelPanel
+          channelId={channelId}
+          channelName={channelName}
+          guildId={guildId}
+        />
+      )}
 
       {/* Messages */}
       <MessageList
