@@ -14,6 +14,7 @@ import { BotOrchestratorService } from './bot-orchestrator.service';
 import { WebhookController } from './webhook.controller';
 import { WebhookGuard } from './webhook.guard';
 import { ChatModule } from '../chat/chat.module';
+import { MemoryModule } from '../memory/memory.module';
 
 import { AgentRunner } from './runners/agent-runner.service';
 import { WebhookRunner } from './runners/webhook-runner.service';
@@ -22,6 +23,7 @@ import { LlmRunner } from './runners/llm-runner.service';
 
 import { TemplateRegistry } from './templates/template-registry';
 import { ToolExecutorService } from './tools/tool-executor.service';
+import { ContextBuilder } from './context/context-builder.service';
 
 import { EncryptionService } from './crypto/encryption.service';
 
@@ -40,6 +42,7 @@ import { EncryptionService } from './crypto/encryption.service';
       maxRedirects: 3,
     }),
     ChatModule,
+    MemoryModule,
   ],
   providers: [
     BotService,
@@ -50,6 +53,7 @@ import { EncryptionService } from './crypto/encryption.service';
 
     TemplateRegistry,
     ToolExecutorService,
+    ContextBuilder,
 
     AgentRunner,
     WebhookRunner,

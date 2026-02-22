@@ -8,6 +8,7 @@ import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
 import { ChatService } from '../chat/chat.service';
 import { BotService } from './bot.service';
 import { ChannelBotService } from './channel-bot.service';
+import { MemoryService } from '../memory/services/memory.service';
 import { UserDocument } from '../user/schemas/user.schema';
 import { BotDocument } from './schemas/bot.schema';
 import { ChannelBotDocument } from './schemas/channel-bot.schema';
@@ -21,6 +22,7 @@ import {
   BOT_SCOPE,
   MEMORY_SCOPE,
   LlmToolValue,
+  MemoryScopeValue,
 } from '@discord-platform/shared';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 
@@ -30,6 +32,7 @@ export class BotOrchestratorService {
     private readonly botService: BotService,
     private readonly channelBotService: ChannelBotService,
     private readonly chatService: ChatService,
+    private readonly memoryService: MemoryService,
     private readonly agentRunner: AgentRunner,
     private readonly logger: AppLogger,
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
@@ -147,9 +150,18 @@ export class BotOrchestratorService {
         this.botUserIds.add(botUser._id.toString());
         const cleanContent = this.stripMention(message.content, botName);
 
+        // 根据记忆范围获取记忆上下文
+        const memoryScope = binding.memoryScope as MemoryScopeValue;
+        const memory = await this.memoryService.getMemoryContext(
+          bot._id.toString(),
+          channelId,
+          guildId,
+          memoryScope,
+        );
+
         // 构建带频道覆盖的上下文
         const contextMessages =
-          binding.memoryScope === MEMORY_SCOPE.EPHEMERAL
+          memoryScope === MEMORY_SCOPE.EPHEMERAL
             ? [] // 临时模式不带历史上下文
             : filteredContext;
 
@@ -173,7 +185,9 @@ export class BotOrchestratorService {
           channelBotId: binding._id.toString(),
           overrideSystemPrompt: binding.overridePrompt,
           overrideTools: binding.overrideTools as LlmToolValue[] | undefined,
-          memoryScope: binding.memoryScope,
+          memoryScope,
+          // 注入记忆上下文
+          memory,
         };
 
         this.agentRunner
@@ -198,6 +212,14 @@ export class BotOrchestratorService {
         this.botUserIds.add(botUser._id.toString());
         const cleanContent = this.stripMention(message.content, botName);
 
+        // Guild-scope bots 使用 channel 记忆范围（每个频道独立记忆）
+        const memory = await this.memoryService.getMemoryContext(
+          bot._id.toString(),
+          channelId,
+          guildId,
+          MEMORY_SCOPE.CHANNEL,
+        );
+
         const executionCtx: BotExecutionContext = {
           botId: bot._id.toString(),
           botUserId: botUser._id.toString(),
@@ -214,6 +236,9 @@ export class BotOrchestratorService {
           rawContent: message.content,
           context: filteredContext,
           executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
+          memoryScope: MEMORY_SCOPE.CHANNEL,
+          // 注入记忆上下文
+          memory,
         };
 
         this.agentRunner

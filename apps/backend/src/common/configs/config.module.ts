@@ -45,6 +45,10 @@ import { join } from 'path';
         MINIO_ACCESS_KEY: Joi.string().default('minioadmin'),
         MINIO_SECRET_KEY: Joi.string().default('minioadmin123'),
         MINIO_PUBLIC_URL: Joi.string().default('http://localhost:9000'),
+        // Optional: Summary LLM for bot memory
+        SUMMARY_LLM_BASE_URL: Joi.string().optional().allow('').default(''),
+        SUMMARY_LLM_API_KEY: Joi.string().optional().allow('').default(''),
+        SUMMARY_LLM_MODEL: Joi.string().optional().default('deepseek-chat'),
       }),
     }),
   ],

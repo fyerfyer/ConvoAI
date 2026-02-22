@@ -136,6 +136,17 @@ export interface TemplateConfigFieldSchema {
   max?: number;
 }
 
+// ── Memory 上下文（传递给 Runner 使用的记忆数据）──
+
+export interface MemoryContext {
+  // 滚动摘要（压缩的历史对话）
+  rollingSummary: string;
+  // 短期窗口消息（最近 N 条原始消息）
+  recentMessages: AgentContextMessage[];
+  // 已纳入摘要的消息总数
+  summarizedMessageCount: number;
+}
+
 // ── Bot 执行上下文（传递给 Runner 的统一结构）──
 
 export interface BotExecutionContext {
@@ -158,6 +169,7 @@ export interface BotExecutionContext {
   overrideSystemPrompt?: string;
   overrideTools?: LlmToolValue[];
   memoryScope?: MemoryScopeValue;
+  memory?: MemoryContext;
 }
 
 // ── Channel Bot Binding（频道级 Bot 实例配置）──

@@ -27,6 +27,7 @@ export type BotScopeValue = (typeof BOT_SCOPE)[BotScopeKey];
 export const MEMORY_SCOPE = {
   CHANNEL: 'channel',
   EPHEMERAL: 'ephemeral',
+  ROLLING: 'rolling',
 } as const;
 
 export type MemoryScopeKey = keyof typeof MEMORY_SCOPE;
@@ -95,3 +96,15 @@ export const BOT_EVENT = {
 } as const;
 
 export type BotEvent = (typeof BOT_EVENT)[keyof typeof BOT_EVENT];
+
+// ── Memory 配置常量 ──
+export const MEMORY_DEFAULTS = {
+  /** 短期窗口保留的最近消息数 */
+  SHORT_TERM_WINDOW_SIZE: 15,
+  /** 触发 rolling summary 的消息阈值 */
+  SUMMARY_TRIGGER_THRESHOLD: 30,
+  /** 每次纳入 summary 的最大消息数 */
+  SUMMARY_BATCH_SIZE: 40,
+  /** rolling summary 最大字符长度 */
+  SUMMARY_MAX_LENGTH: 2000,
+} as const;

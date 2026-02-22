@@ -11,36 +11,24 @@ import {
   OpenAITool,
   ToolExecutorService,
 } from '../tools/tool-executor.service';
+import {
+  ContextBuilder,
+  ChatMessage,
+} from '../context/context-builder.service';
+import { MemoryService } from '../../memory/services/memory.service';
 import { UserDocument } from '../../user/schemas/user.schema';
 
 import {
   BotExecutionContext,
-  AgentContextMessage,
   BOT_INTERNAL_EVENT,
   BotStreamStartPayload,
   BotStreamChunkPayload,
   LLM_PROVIDER,
+  MEMORY_SCOPE,
 } from '@discord-platform/shared';
 import { AppLogger } from '../../../common/configs/logger/logger.service';
 
-// OpenAI 兼容消息格式
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-}
-
-interface ToolCall {
-  id: string;
-  type: 'function';
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
-
-// Provider → Base URL 映射
+// Provider -> Base URL 映射
 const PROVIDER_BASE_URLS: Record<string, string> = {
   [LLM_PROVIDER.OPENAI]: 'https://api.openai.com/v1',
   [LLM_PROVIDER.DEEPSEEK]: 'https://api.deepseek.com',
@@ -57,6 +45,8 @@ export class LlmRunner {
     private readonly encryptionService: EncryptionService,
     private readonly chatService: ChatService,
     private readonly toolExecutor: ToolExecutorService,
+    private readonly contextBuilder: ContextBuilder,
+    private readonly memoryService: MemoryService,
     private readonly eventEmitter: EventEmitter2,
     private readonly logger: AppLogger,
   ) {}
@@ -76,14 +66,16 @@ export class LlmRunner {
     try {
       const apiKey = this.decryptApiKey(llmConfig.apiKey);
       const baseUrl = this.resolveBaseUrl(llmConfig);
-      const messages = this.buildMessages(llmConfig, ctx);
+
+      // 使用 ContextBuilder 组装完整的消息序列
+      const messages = this.contextBuilder.buildMessages(llmConfig, ctx);
 
       // Channel 覆写
       const toolNames = ctx.overrideTools ?? llmConfig.tools;
       const tools = this.toolExecutor.resolveTools(toolNames);
 
       this.logger.debug(
-        `[LlmRunner] Calling ${llmConfig.provider}/${llmConfig.model} for bot ${ctx.botId} (tools: ${tools.length}, messages: ${messages.length}, baseUrl: ${baseUrl})`,
+        `[LlmRunner] Calling ${llmConfig.provider}/${llmConfig.model} for bot ${ctx.botId} (tools: ${tools.length}, messages: ${messages.length}, baseUrl: ${baseUrl}, memory: ${ctx.memory?.rollingSummary ? 'yes' : 'no'})`,
       );
 
       if (tools.length > 0) {
@@ -100,6 +92,9 @@ export class LlmRunner {
         // 流式请求
         await this.streamChat(bot, ctx, baseUrl, apiKey, llmConfig, messages);
       }
+
+      // 交互完成后异步更新记忆
+      this.updateMemoryInBackground(ctx);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
@@ -214,43 +209,24 @@ export class LlmRunner {
     );
   }
 
-  private buildMessages(
-    config: LlmConfigEmbedded,
-    ctx: BotExecutionContext,
-  ): ChatMessage[] {
-    const messages: ChatMessage[] = [];
+  private updateMemoryInBackground(ctx: BotExecutionContext): void {
+    const memoryScope = ctx.memoryScope ?? MEMORY_SCOPE.CHANNEL;
+    if (memoryScope === MEMORY_SCOPE.EPHEMERAL) return;
 
-    // Channel 覆写
-    const systemPrompt = ctx.overrideSystemPrompt ?? config.systemPrompt;
-    if (systemPrompt) {
-      messages.push({
-        role: 'system',
-        content: systemPrompt,
+    this.memoryService
+      .updateMemoryAfterInteraction(
+        ctx.botId,
+        ctx.channelId,
+        ctx.guildId,
+        ctx.botName,
+        memoryScope,
+      )
+      .catch((err) => {
+        this.logger.error(
+          `[LlmRunner] Memory update failed for bot ${ctx.botId}: ${err.message}`,
+          err.stack,
+        );
       });
-    }
-
-    // 历史上下文
-    const contextMessages = this.convertContext(ctx.context);
-    messages.push(...contextMessages);
-
-    // 当前用户消息
-    messages.push({
-      role: 'user',
-      content: ctx.content,
-    });
-
-    return messages;
-  }
-
-  private convertContext(context: AgentContextMessage[]): ChatMessage[] {
-    // 取最近的消息作为上下文，避免超出 token 限制
-    // TODO：上下文提取优化
-    const recent = context.slice(-20);
-    return recent.map((msg) => ({
-      role: msg.role === 'assistant' ? 'assistant' : 'user',
-      content:
-        msg.role === 'user' ? `[${msg.author}]: ${msg.content}` : msg.content,
-    }));
   }
 
   private async streamChat(
