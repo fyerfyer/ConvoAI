@@ -53,6 +53,7 @@ import RenameChannelDialog from '@/components/channel/rename-channel-dialog';
 import InviteMemberDialog from '@/components/guild/invite-member-dialog';
 import GuildSettingsDialog from '@/components/guild/guild-settings-dialog';
 import CreateBotDialog from '@/components/bot/create-bot-dialog';
+import ChannelBotDialog from '@/components/bot/channel-bot-dialog';
 import { useBots } from '@/hooks/use-bot';
 import { usePermissions } from '@/hooks/use-permission';
 import VoiceStatusBar from '@/components/voice/voice-status-bar';
@@ -96,6 +97,10 @@ export default function ChannelSidebar() {
 
   // Bot creation dialog state
   const [createBotOpen, setCreateBotOpen] = useState(false);
+
+  // Channel Bot management dialog state
+  const [channelBotDialogChannel, setChannelBotDialogChannel] =
+    useState<ChannelResponse | null>(null);
 
   // Bots query
   const { data: bots = [] } = useBots(guildId);
@@ -506,6 +511,7 @@ export default function ChannelSidebar() {
         onRename={(channel) => setRenameChannel(channel)}
         onMove={handleMove}
         onDelete={handleDelete}
+        onManageBots={(channel) => setChannelBotDialogChannel(channel)}
       />
 
       {/* Invite Members Dialog */}
@@ -529,6 +535,17 @@ export default function ChannelSidebar() {
         <CreateBotDialog
           open={createBotOpen}
           onOpenChange={setCreateBotOpen}
+          guildId={guildId}
+        />
+      )}
+
+      {/* Channel Bot Management Dialog */}
+      {guildId && channelBotDialogChannel && (
+        <ChannelBotDialog
+          open={!!channelBotDialogChannel}
+          onOpenChange={(open) => !open && setChannelBotDialogChannel(null)}
+          channelId={channelBotDialogChannel.id}
+          channelName={channelBotDialogChannel.name}
           guildId={guildId}
         />
       )}

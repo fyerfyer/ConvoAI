@@ -7,8 +7,10 @@ import { MessageDocument } from '../chat/schemas/message.schema';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
 import { ChatService } from '../chat/chat.service';
 import { BotService } from './bot.service';
+import { ChannelBotService } from './channel-bot.service';
 import { UserDocument } from '../user/schemas/user.schema';
 import { BotDocument } from './schemas/bot.schema';
+import { ChannelBotDocument } from './schemas/channel-bot.schema';
 import { AgentRunner } from './runners/agent-runner.service';
 
 import {
@@ -16,6 +18,9 @@ import {
   AgentContextMessage,
   BotExecutionContext,
   EXECUTION_MODE,
+  BOT_SCOPE,
+  MEMORY_SCOPE,
+  LlmToolValue,
 } from '@discord-platform/shared';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 
@@ -23,9 +28,9 @@ import { AppLogger } from '../../common/configs/logger/logger.service';
 export class BotOrchestratorService {
   constructor(
     private readonly botService: BotService,
+    private readonly channelBotService: ChannelBotService,
     private readonly chatService: ChatService,
     private readonly agentRunner: AgentRunner,
-    private readonly eventEmitter: EventEmitter2,
     private readonly logger: AppLogger,
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
   ) {}
@@ -45,7 +50,6 @@ export class BotOrchestratorService {
         : String(message.sender);
       if (sender?.isBot || this.botUserIds.has(senderId)) return;
 
-      // Quick check: does the message contain @ at all?
       if (!message.content?.includes('@')) return;
 
       const channelId = String(message.channelId);
@@ -53,37 +57,144 @@ export class BotOrchestratorService {
       if (!channel) return;
       const guildId = String(channel.guild);
 
-      // Load all active bots in the guild (single DB query)
-      const activeBots = await this.botService.findActiveBotsByGuild(guildId);
-      if (activeBots.length === 0) return;
+      // Channel-first 策略
+      // 1. 加载该频道所有活跃的 Channel Bot 绑定
+      // 2. 加载该 Guild 的所有 Guild-scope Bot
+      // 3. 合并去重后匹配 @mention
 
-      // Match multi-word bot names against message content (case-insensitive)
+      const [channelBindings, guildBots] = await Promise.all([
+        this.channelBotService.findActiveBindingsByChannel(channelId),
+        this.botService.findActiveBotsByGuild(guildId),
+      ]);
+
+      if (channelBindings.length === 0 && guildBots.length === 0) return;
+
+      // 构建 channel 绑定 Bot 的 ID 集合
+      const channelBoundBotIds = new Set(
+        channelBindings.map((b) => String(b.botId)),
+      );
+
+      // 分离 Guild-scope Bot
+      const guildScopeBots = guildBots.filter(
+        (bot) =>
+          bot.scope === BOT_SCOPE.GUILD &&
+          !channelBoundBotIds.has(bot._id.toString()),
+      );
+
+      const channelBotDefs = await Promise.all(
+        channelBindings.map(async (binding) => {
+          const bot = guildBots.find(
+            (b) => b._id.toString() === String(binding.botId),
+          );
+          if (bot) return { bot, binding };
+          // 如果 guildBots 中没有（可能不是 active），再单独查
+          try {
+            const loadedBot = await this.botService.findActiveBotById(
+              String(binding.botId),
+            );
+            return loadedBot ? { bot: loadedBot, binding } : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const validChannelBots = channelBotDefs.filter(
+        (x): x is { bot: BotDocument; binding: ChannelBotDocument } =>
+          x !== null,
+      );
+
       const contentLower = message.content.toLowerCase();
-      const mentionedBots = activeBots.filter((bot) => {
+
+      // 匹配 Channel-bound bots
+      const mentionedChannelBots = validChannelBots.filter(({ bot }) => {
         const user = bot.userId as unknown as UserDocument;
         const botName = user?.name;
         if (!botName) return false;
         return contentLower.includes(`@${botName.toLowerCase()}`);
       });
 
-      if (mentionedBots.length === 0) return;
+      // 匹配 Guild-scope bots
+      const mentionedGuildBots = guildScopeBots.filter((bot) => {
+        const user = bot.userId as unknown as UserDocument;
+        const botName = user?.name;
+        if (!botName) return false;
+        return contentLower.includes(`@${botName.toLowerCase()}`);
+      });
 
-      // Build context once for all dispatches (exclude current message to avoid duplication)
+      if (
+        mentionedChannelBots.length === 0 &&
+        mentionedGuildBots.length === 0
+      ) {
+        return;
+      }
+
+      // Build context once for all dispatches
       const context = await this.buildContext(channelId);
       const currentMsgId = message._id.toString();
       const filteredContext = context.filter(
         (m) => m.messageId !== currentMsgId,
       );
 
-      for (const bot of mentionedBots) {
+      // Dispatch Channel-bound bots（带频道级覆盖配置）
+      for (const { bot, binding } of mentionedChannelBots) {
         const botUser = bot.userId as unknown as UserDocument;
         const botName = botUser.name;
 
         this.logger.log(
-          `Bot "${botName}" mentioned in channel ${channelId}, dispatching via AgentRunner (mode: ${bot.executionMode || 'webhook'})`,
+          `[Channel Bot] "${botName}" mentioned in channel ${channelId}, dispatching (mode: ${bot.executionMode || 'webhook'}, memory: ${binding.memoryScope})`,
         );
 
-        // 缓存 Bot 用户 ID，防止后续 Bot 消息重入
+        this.botUserIds.add(botUser._id.toString());
+        const cleanContent = this.stripMention(message.content, botName);
+
+        // 构建带频道覆盖的上下文
+        const contextMessages =
+          binding.memoryScope === MEMORY_SCOPE.EPHEMERAL
+            ? [] // 临时模式不带历史上下文
+            : filteredContext;
+
+        const executionCtx: BotExecutionContext = {
+          botId: bot._id.toString(),
+          botUserId: botUser._id.toString(),
+          botName,
+          guildId,
+          channelId,
+          messageId: message._id.toString(),
+          author: {
+            id: sender._id.toString(),
+            name: sender.name,
+            avatar: sender.avatar,
+          },
+          content: cleanContent,
+          rawContent: message.content,
+          context: contextMessages,
+          executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
+          // Channel-level overrides
+          channelBotId: binding._id.toString(),
+          overrideSystemPrompt: binding.overridePrompt,
+          overrideTools: binding.overrideTools as LlmToolValue[] | undefined,
+          memoryScope: binding.memoryScope,
+        };
+
+        this.agentRunner
+          .dispatch(bot, executionCtx)
+          .catch((err) =>
+            this.logger.error(
+              `Failed to dispatch channel bot "${botName}": ${err.message}`,
+              err.stack,
+            ),
+          );
+      }
+
+      // Dispatch
+      for (const bot of mentionedGuildBots) {
+        const botUser = bot.userId as unknown as UserDocument;
+        const botName = botUser.name;
+
+        this.logger.log(
+          `[Guild Bot] "${botName}" mentioned in channel ${channelId}, dispatching (mode: ${bot.executionMode || 'webhook'})`,
+        );
+
         this.botUserIds.add(botUser._id.toString());
         const cleanContent = this.stripMention(message.content, botName);
 
@@ -105,12 +216,11 @@ export class BotOrchestratorService {
           executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
         };
 
-        // 通过 AgentRunner 统一分发
         this.agentRunner
           .dispatch(bot, executionCtx)
           .catch((err) =>
             this.logger.error(
-              `Failed to dispatch to agent "${botName}": ${err.message}`,
+              `Failed to dispatch guild bot "${botName}": ${err.message}`,
               err.stack,
             ),
           );

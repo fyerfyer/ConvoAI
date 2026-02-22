@@ -6,8 +6,12 @@ import {
   ApiResponse,
   BotResponse,
   BotListResponse,
+  ChannelBotResponse,
+  ChannelBotListResponse,
   CreateBotDTO,
   UpdateBotDTO,
+  CreateChannelBotDTO,
+  UpdateChannelBotDTO,
   TemplateInfo,
 } from '@discord-platform/shared';
 
@@ -26,6 +30,13 @@ export const botKeys = {
   byGuild: (guildId: string) => [...botKeys.all, 'guild', guildId] as const,
   detail: (botId: string) => [...botKeys.all, 'detail', botId] as const,
   templates: () => [...botKeys.all, 'templates'] as const,
+};
+
+export const channelBotKeys = {
+  all: ['channel-bots'] as const,
+  byChannel: (channelId: string) =>
+    [...channelBotKeys.all, 'channel', channelId] as const,
+  byBot: (botId: string) => [...channelBotKeys.all, 'bot', botId] as const,
 };
 
 // List bots in a guild
@@ -217,5 +228,155 @@ export function useTemplates() {
     },
     enabled: isAuthenticated,
     staleTime: 5 * 60 * 1000, // templates rarely change
+  });
+}
+
+// List bots bound to a channel
+export function useChannelBots(channelId: string | undefined) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  return useQuery({
+    queryKey: channelBotKeys.byChannel(channelId ?? ''),
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<ChannelBotListResponse>>(
+        `/bots/channel/${channelId}/bots`,
+      );
+      return response.data?.channelBots ?? [];
+    },
+    enabled: isAuthenticated && !!channelId,
+    staleTime: 60 * 1000,
+  });
+}
+
+// List channel bindings for a specific bot
+export function useBotBindings(botId: string | undefined) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  return useQuery({
+    queryKey: channelBotKeys.byBot(botId ?? ''),
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<ChannelBotListResponse>>(
+        `/bots/${botId}/channel-bindings`,
+      );
+      return response.data?.channelBots ?? [];
+    },
+    enabled: isAuthenticated && !!botId,
+    staleTime: 60 * 1000,
+  });
+}
+
+// Bind a bot to a channel
+export function useBindBot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateChannelBotDTO) => {
+      const response = await api.post<ApiResponse<ChannelBotResponse>>(
+        '/bots/channel-bindings',
+        data,
+      );
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.byChannel(variables.channelId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.byBot(variables.botId),
+      });
+      queryClient.invalidateQueries({ queryKey: botKeys.all });
+      toast({
+        title: 'Bot Bound',
+        description: 'Bot has been bound to the channel.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bind Failed',
+        description: getErrorMessage(error, 'Unable to bind bot to channel.'),
+      });
+    },
+  });
+}
+
+// Update a channel bot binding
+export function useUpdateChannelBot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      bindingId,
+      data,
+    }: {
+      bindingId: string;
+      channelId: string;
+      botId: string;
+      data: UpdateChannelBotDTO;
+    }) => {
+      const response = await api.put<ApiResponse<ChannelBotResponse>>(
+        `/bots/channel-bindings/${bindingId}`,
+        data,
+      );
+      return response.data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.byChannel(variables.channelId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.byBot(variables.botId),
+      });
+      toast({
+        title: 'Binding Updated',
+        description: 'Channel bot settings have been saved.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: getErrorMessage(error, 'Unable to update channel bot.'),
+      });
+    },
+  });
+}
+
+// Unbind a bot from a channel
+export function useUnbindBot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      bindingId,
+    }: {
+      bindingId: string;
+      channelId: string;
+      botId: string;
+    }) => {
+      await api.delete<ApiResponse<null>>(
+        `/bots/channel-bindings/${bindingId}`,
+      );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.byChannel(variables.channelId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.byBot(variables.botId),
+      });
+      queryClient.invalidateQueries({ queryKey: botKeys.all });
+      toast({
+        title: 'Bot Unbound',
+        description: 'Bot has been removed from the channel.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Unbind Failed',
+        description: getErrorMessage(error, 'Unable to unbind bot.'),
+      });
+    },
   });
 }

@@ -4,6 +4,7 @@ import {
   LlmToolValue,
   TemplateIdValue,
   ExecutionModeValue,
+  MemoryScopeValue,
 } from '../constants/bot.constant';
 
 export interface AgentContextMessage {
@@ -153,4 +154,27 @@ export interface BotExecutionContext {
   rawContent: string; // 原始消息内容
   context: AgentContextMessage[];
   executionMode: ExecutionModeValue;
+  channelBotId?: string;
+  overrideSystemPrompt?: string;
+  overrideTools?: LlmToolValue[];
+  memoryScope?: MemoryScopeValue;
+}
+
+// ── Channel Bot Binding（频道级 Bot 实例配置）──
+
+export interface ChannelBotPolicy {
+  canSummarize: boolean;
+  canUseTools: boolean;
+  maxTokensPerRequest: number;
+}
+
+export interface ChannelBotConfig {
+  botId: string;
+  channelId: string;
+  guildId: string;
+  enabled: boolean;
+  overridePrompt?: string;
+  overrideTools?: LlmToolValue[];
+  memoryScope: MemoryScopeValue;
+  policy: ChannelBotPolicy;
 }

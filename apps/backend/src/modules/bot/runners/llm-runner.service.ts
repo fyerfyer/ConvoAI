@@ -7,7 +7,10 @@ import { randomBytes } from 'crypto';
 import { BotDocument, LlmConfigEmbedded } from '../schemas/bot.schema';
 import { EncryptionService } from '../crypto/encryption.service';
 import { ChatService } from '../../chat/chat.service';
-import { OpenAITool, ToolExecutorService } from '../tools/tool-executor.service';
+import {
+  OpenAITool,
+  ToolExecutorService,
+} from '../tools/tool-executor.service';
 import { UserDocument } from '../../user/schemas/user.schema';
 
 import {
@@ -74,13 +77,15 @@ export class LlmRunner {
       const apiKey = this.decryptApiKey(llmConfig.apiKey);
       const baseUrl = this.resolveBaseUrl(llmConfig);
       const messages = this.buildMessages(llmConfig, ctx);
-      const tools = this.toolExecutor.resolveTools(llmConfig.tools);
+
+      // Channel 覆写
+      const toolNames = ctx.overrideTools ?? llmConfig.tools;
+      const tools = this.toolExecutor.resolveTools(toolNames);
 
       this.logger.debug(
         `[LlmRunner] Calling ${llmConfig.provider}/${llmConfig.model} for bot ${ctx.botId} (tools: ${tools.length}, messages: ${messages.length}, baseUrl: ${baseUrl})`,
       );
 
-      // 如果配置了工具，使用带工具调用循环的非流式模式
       if (tools.length > 0) {
         await this.chatWithTools(
           bot,
@@ -92,13 +97,13 @@ export class LlmRunner {
           tools,
         );
       } else {
-        // 无工具： 流式请求
+        // 流式请求
         await this.streamChat(bot, ctx, baseUrl, apiKey, llmConfig, messages);
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
-      // 提取 Axios 响应体来详细日志
+      // 提取 Axios 响应体来写日志
       const axiosData =
         typeof err === 'object' &&
         err !== null &&
@@ -112,6 +117,7 @@ export class LlmRunner {
         `[LlmRunner] LLM request failed for bot ${ctx.botId}: ${error.message}${detail}`,
         error.stack,
       );
+      // 如果配置了工具，使用带工具调用循环的非流式模式
 
       const userMessage = this.getUserFriendlyError(error, axiosData);
       await this.sendBotMessage(bot, ctx.channelId, userMessage);
@@ -214,11 +220,12 @@ export class LlmRunner {
   ): ChatMessage[] {
     const messages: ChatMessage[] = [];
 
-    // System Prompt
-    if (config.systemPrompt) {
+    // Channel 覆写
+    const systemPrompt = ctx.overrideSystemPrompt ?? config.systemPrompt;
+    if (systemPrompt) {
       messages.push({
         role: 'system',
-        content: config.systemPrompt,
+        content: systemPrompt,
       });
     }
 

@@ -32,6 +32,7 @@ import {
   EXECUTION_MODE,
   LLM_PROVIDER,
   LLM_TOOL,
+  BOT_SCOPE,
   TemplateInfo,
 } from '@discord-platform/shared';
 import { cn } from '@/lib/utils';
@@ -99,6 +100,7 @@ export default function CreateBotDialog({
   const [executionMode, setExecutionMode] = useState<string>(
     EXECUTION_MODE.WEBHOOK,
   );
+  const [scope, setScope] = useState<string>(BOT_SCOPE.CHANNEL);
 
   // Common fields
   const [name, setName] = useState('');
@@ -166,6 +168,7 @@ export default function CreateBotDialog({
         guildId,
         description: description.trim() || '',
         executionMode: executionMode as 'webhook' | 'builtin' | 'managed-llm',
+        scope: scope as 'guild' | 'channel',
         ...(avatarBase64 ? { avatar: avatarBase64 } : {}),
       };
 
@@ -234,6 +237,7 @@ export default function CreateBotDialog({
   const resetForm = () => {
     setStep('mode');
     setExecutionMode(EXECUTION_MODE.WEBHOOK);
+    setScope(BOT_SCOPE.CHANNEL);
     setName('');
     setDescription('');
     setAvatarPreview(null);
@@ -593,6 +597,52 @@ export default function CreateBotDialog({
             />
             <p className="mt-1 text-[11px] text-gray-500">
               Users will @mention this name to trigger the bot.
+            </p>
+          </div>
+
+          {/* ── Scope Selector ── */}
+          <div>
+            <Label className="text-gray-300 text-xs mb-2 block">
+              Bot Scope
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setScope(BOT_SCOPE.CHANNEL)}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-left transition-all',
+                  scope === BOT_SCOPE.CHANNEL
+                    ? 'border-cyan-500 bg-cyan-500/10'
+                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500',
+                )}
+              >
+                <div className="text-xs font-medium text-white">
+                  Channel-scoped
+                </div>
+                <div className="text-[10px] text-gray-400 mt-0.5">
+                  Bind to specific channels
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope(BOT_SCOPE.GUILD)}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-left transition-all',
+                  scope === BOT_SCOPE.GUILD
+                    ? 'border-amber-500 bg-amber-500/10'
+                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500',
+                )}
+              >
+                <div className="text-xs font-medium text-white">Guild-wide</div>
+                <div className="text-[10px] text-gray-400 mt-0.5">
+                  Active in all channels
+                </div>
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-gray-500">
+              {scope === BOT_SCOPE.CHANNEL
+                ? 'After creating, bind this bot to channels where you want it active.'
+                : 'This bot will respond in every channel of the guild.'}
             </p>
           </div>
 

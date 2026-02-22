@@ -15,6 +15,7 @@ import {
   UpdateBotDTO,
   BotResponse,
   BOT_STATUS,
+  BOT_SCOPE,
   EXECUTION_MODE,
   TEMPLATE_CONFIG_SCHEMAS,
 } from '@discord-platform/shared';
@@ -89,6 +90,7 @@ export class BotService {
       guildId: new Types.ObjectId(dto.guildId),
       type: dto.type,
       executionMode,
+      scope: dto.scope || BOT_SCOPE.CHANNEL,
       description: dto.description || '',
     };
 
@@ -164,6 +166,17 @@ export class BotService {
     return this.botModel
       .find({
         guildId: new Types.ObjectId(guildId),
+        status: BOT_STATUS.ACTIVE,
+      })
+      .select('+webhookSecret +llmConfig.apiKey')
+      .populate('userId', 'name avatar isBot')
+      .exec();
+  }
+
+  async findActiveBotById(botId: string): Promise<BotDocument | null> {
+    return this.botModel
+      .findOne({
+        _id: new Types.ObjectId(botId),
         status: BOT_STATUS.ACTIVE,
       })
       .select('+webhookSecret +llmConfig.apiKey')
@@ -299,7 +312,7 @@ export class BotService {
   }
 
   // ── 响应序列化 ──
-  toBotResponse(bot: BotDocument): BotResponse {
+  toBotResponse(bot: BotDocument, channelBindingCount?: number): BotResponse {
     const user = bot.userId as unknown as UserDocument;
     const userId = user?._id ? user._id.toString() : String(bot.userId);
 
@@ -311,8 +324,10 @@ export class BotService {
       guildId: String(bot.guildId),
       type: bot.type,
       executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
+      scope: bot.scope || BOT_SCOPE.CHANNEL,
       description: bot.description,
       status: bot.status,
+      channelBindingCount,
       createdAt: bot.createdAt?.toISOString() || '',
       updatedAt: bot.updatedAt?.toISOString() || '',
     };

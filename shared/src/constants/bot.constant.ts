@@ -14,6 +14,24 @@ export const BOT_STATUS = {
 export type BotStatusKey = keyof typeof BOT_STATUS;
 export type BotStatusValue = (typeof BOT_STATUS)[BotStatusKey];
 
+// ── Bot 作用域 ──
+export const BOT_SCOPE = {
+  GUILD: 'guild',
+  CHANNEL: 'channel',
+} as const;
+
+export type BotScopeKey = keyof typeof BOT_SCOPE;
+export type BotScopeValue = (typeof BOT_SCOPE)[BotScopeKey];
+
+// ── Channel Bot Memory 范围 ──
+export const MEMORY_SCOPE = {
+  CHANNEL: 'channel',
+  EPHEMERAL: 'ephemeral',
+} as const;
+
+export type MemoryScopeKey = keyof typeof MEMORY_SCOPE;
+export type MemoryScopeValue = (typeof MEMORY_SCOPE)[MemoryScopeKey];
+
 // ── 执行模式 ──
 export const EXECUTION_MODE = {
   WEBHOOK: 'webhook',

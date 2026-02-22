@@ -2,11 +2,13 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HttpModule } from '@nestjs/axios';
 import { Bot, botSchema } from './schemas/bot.schema';
+import { ChannelBot, channelBotSchema } from './schemas/channel-bot.schema';
 import { User, userSchema } from '../user/schemas/user.schema';
 import { Guild, guildSchema } from '../guild/schemas/guild.schema';
 import { Channel, channelSchema } from '../channel/schemas/channel.schema';
 import { Member, memberSchema } from '../member/schemas/member.schema';
 import { BotService } from './bot.service';
+import { ChannelBotService } from './channel-bot.service';
 import { BotController } from './bot.controller';
 import { BotOrchestratorService } from './bot-orchestrator.service';
 import { WebhookController } from './webhook.controller';
@@ -27,6 +29,7 @@ import { EncryptionService } from './crypto/encryption.service';
   imports: [
     MongooseModule.forFeature([
       { name: Bot.name, schema: botSchema },
+      { name: ChannelBot.name, schema: channelBotSchema },
       { name: User.name, schema: userSchema },
       { name: Guild.name, schema: guildSchema },
       { name: Channel.name, schema: channelSchema },
@@ -40,6 +43,7 @@ import { EncryptionService } from './crypto/encryption.service';
   ],
   providers: [
     BotService,
+    ChannelBotService,
     BotOrchestratorService,
     WebhookGuard,
     EncryptionService,
@@ -53,6 +57,11 @@ import { EncryptionService } from './crypto/encryption.service';
     LlmRunner,
   ],
   controllers: [BotController, WebhookController],
-  exports: [BotService, BotOrchestratorService, TemplateRegistry],
+  exports: [
+    BotService,
+    ChannelBotService,
+    BotOrchestratorService,
+    TemplateRegistry,
+  ],
 })
 export class BotModule {}

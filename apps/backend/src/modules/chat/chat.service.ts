@@ -21,6 +21,7 @@ import {
 } from '@discord-platform/shared';
 import { ClientSession, Types, Document } from 'mongoose';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
+import { UserDocument } from '../user/schemas/user.schema';
 import { S3Service } from '../../common/configs/s3/s3.service';
 
 @Injectable()
@@ -127,14 +128,13 @@ export class ChatService {
     // 确保消息已经 populated
     const populatedMessage = await this.populateMessage(message);
 
-    if (
-      !populatedMessage.sender ||
-      !(populatedMessage.sender instanceof Document)
-    ) {
-      throw new Error('Message sender not populated');
-    }
+    // 处理 sender 被删除（例如 Bot 用户已被移除）的情况，返回占位信息而非抛错
+    const senderPopulated =
+      populatedMessage.sender && populatedMessage.sender instanceof Document;
 
-    const sender = populatedMessage.sender;
+    const sender = senderPopulated
+      ? (populatedMessage.sender as unknown as UserDocument)
+      : null;
 
     // Build replyTo response
     let replyToResponse:
@@ -189,12 +189,19 @@ export class ChatService {
       content: populatedMessage.content,
       channelId: (populatedMessage.channelId as Types.ObjectId).toString(),
       type: messageType,
-      author: {
-        id: sender._id.toString(),
-        name: sender.name,
-        avatar: sender.avatar,
-        isBot: sender.isBot,
-      },
+      author: sender
+        ? {
+            id: sender._id.toString(),
+            name: sender.name,
+            avatar: sender.avatar,
+            isBot: sender.isBot,
+          }
+        : {
+            id: String(populatedMessage.sender ?? ''),
+            name: '[Deleted User]',
+            avatar: null,
+            isBot: false,
+          },
       attachments: await Promise.all(
         populatedMessage.attachments.map(async (att) => {
           // 为私有 bucket 的附件生成预签名 GET URL
@@ -245,6 +252,16 @@ export class ChatService {
       createdAt: populatedMessage.createdAt?.toISOString(),
       updatedAt: populatedMessage.updatedAt?.toISOString(),
     };
+  }
+
+  /**
+   * 删除某个 sender 的所有消息（用于 Bot 删除时级联清理）
+   */
+  async deleteMessagesBySender(senderId: string): Promise<number> {
+    const result = await this.messageModel.deleteMany({
+      sender: new Types.ObjectId(senderId),
+    });
+    return result.deletedCount;
   }
 
   async getAttachmentPresignedUrl(

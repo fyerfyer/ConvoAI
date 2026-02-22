@@ -13,6 +13,8 @@ import {
   BotTypeValue,
   BOT_STATUS,
   BotStatusValue,
+  BOT_SCOPE,
+  BotScopeValue,
   EXECUTION_MODE,
   ExecutionModeValue,
   TemplateIdValue,
@@ -75,6 +77,16 @@ export class Bot {
     default: EXECUTION_MODE.WEBHOOK,
   })
   executionMode: ExecutionModeValue;
+
+  // Bot 作用域
+  // guild 全局监听所有频道
+  // channel 需要显式绑定频道
+  @Prop({
+    type: String,
+    enum: Object.values(BOT_SCOPE),
+    default: BOT_SCOPE.CHANNEL,
+  })
+  scope: BotScopeValue;
 
   @Prop({ type: String })
   webhookUrl?: string;

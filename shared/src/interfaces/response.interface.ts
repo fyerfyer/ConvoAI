@@ -174,6 +174,7 @@ export interface BotResponse {
   guildId: string;
   type: string;
   executionMode: string;
+  scope: string;
   webhookUrl?: string;
   webhookToken?: string;
   description: string;
@@ -190,12 +191,40 @@ export interface BotResponse {
     customBaseUrl?: string;
     // apiKey 永远不返回给前端
   };
+  channelBindingCount?: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface BotListResponse {
   bots: BotResponse[];
+}
+
+// ── Channel Bot Binding Response ──
+
+export interface ChannelBotResponse {
+  id: string;
+  botId: string;
+  botName: string;
+  botAvatar: string | null;
+  channelId: string;
+  guildId: string;
+  executionMode: string;
+  enabled: boolean;
+  overridePrompt?: string;
+  overrideTools?: string[];
+  memoryScope: string;
+  policy: {
+    canSummarize: boolean;
+    canUseTools: boolean;
+    maxTokensPerRequest: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChannelBotListResponse {
+  channelBots: ChannelBotResponse[];
 }
 
 // Voice

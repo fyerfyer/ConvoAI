@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useCallback, useRef } from 'react';
-import { Hash, Volume2, Users } from 'lucide-react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
+import { Hash, Volume2, Users, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import MessageList from './message-list';
 import MessageInput from './message-input';
@@ -12,6 +12,7 @@ import { useCurrentUser } from '@/hooks/use-auth';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { useMembers } from '@/hooks/use-member';
 import VoiceChannelPanel from '@/components/voice/voice-channel-panel';
+import ChannelBotDialog from '@/components/bot/channel-bot-dialog';
 import {
   MessageResponse,
   AttachmentDto,
@@ -49,6 +50,7 @@ export default function ChatArea({
     useChatStore();
   const prevChannelRef = useRef<string | null>(null);
   const { uploadFiles, isUploading } = useFileUpload(channelId);
+  const [channelBotOpen, setChannelBotOpen] = useState(false);
 
   // Sync fetched messages into store
   useEffect(() => {
@@ -144,16 +146,27 @@ export default function ChatArea({
           )}
           <h3 className="font-semibold text-white">{channelName}</h3>
         </div>
-        {showMemberToggle && (
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-gray-400 hover:text-white"
-            onClick={onToggleMembers}
+            onClick={() => setChannelBotOpen(true)}
+            title="Manage Channel Bots"
           >
-            <Users className="h-5 w-5" />
+            <Bot className="h-5 w-5" />
           </Button>
-        )}
+          {showMemberToggle && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-400 hover:text-white"
+              onClick={onToggleMembers}
+            >
+              <Users className="h-5 w-5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Voice Channel Panel */}
@@ -193,6 +206,15 @@ export default function ChatArea({
         onTyping={handleTyping}
         isUploading={isUploading}
         onFilesSelected={handleFilesSelected}
+      />
+
+      {/* Channel Bot Management Dialog */}
+      <ChannelBotDialog
+        open={channelBotOpen}
+        onOpenChange={setChannelBotOpen}
+        channelId={channelId}
+        channelName={channelName}
+        guildId={guildId}
       />
     </div>
   );

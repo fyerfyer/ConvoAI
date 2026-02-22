@@ -25,6 +25,7 @@ import {
 import {
   BotResponse,
   BOT_STATUS,
+  BOT_SCOPE,
   EXECUTION_MODE,
 } from '@discord-platform/shared';
 import { cn } from '@/lib/utils';
@@ -146,6 +147,22 @@ export default function BotCard({
             >
               {isActive ? 'Online' : 'Offline'}
             </Badge>
+            {bot.scope === BOT_SCOPE.CHANNEL && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+              >
+                {bot.channelBindingCount ?? 0} ch
+              </Badge>
+            )}
+            {bot.scope === BOT_SCOPE.GUILD && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-300 border-amber-500/30"
+              >
+                Guild-wide
+              </Badge>
+            )}
           </div>
 
           {bot.description && (

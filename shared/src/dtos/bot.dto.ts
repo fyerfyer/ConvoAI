@@ -1,6 +1,8 @@
 import z from 'zod';
 
-// ── 执行模式枚举 ──
+// ── 作用域 / 执行模式枚举 ──
+const botScopeEnum = z.enum(['guild', 'channel']);
+const memoryScopeEnum = z.enum(['channel', 'ephemeral']);
 const executionModeEnum = z.enum(['webhook', 'builtin', 'managed-llm']);
 const templateIdEnum = z.enum([
   'welcome',
@@ -85,6 +87,9 @@ export const createBotDTOSchema = z
     type: z.enum(['chatbot', 'agent']).default('chatbot'),
     description: z.string().max(500).optional().default(''),
     avatar: z.string().optional(),
+
+    // Bot 作用域: 'guild' 全局监听, 'channel' 需要显式绑定频道
+    scope: botScopeEnum.default('channel'),
 
     // 执行模式 (默认 webhook 保持向后兼容)
     executionMode: executionModeEnum.default('webhook'),
@@ -178,6 +183,34 @@ export const TEMPLATE_CONFIG_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'auto-responder': autoResponderConfigSchema,
 };
 
+const channelBotPolicySchema = z.object({
+  canSummarize: z.boolean().default(true),
+  canUseTools: z.boolean().default(true),
+  maxTokensPerRequest: z.number().min(1).max(16384).default(2048),
+});
+
+export const createChannelBotDTOSchema = z.object({
+  botId: z.string().min(1, 'Bot ID is required'),
+  channelId: z.string().min(1, 'Channel ID is required'),
+  enabled: z.boolean().default(true),
+  overridePrompt: z.string().max(4000).optional(),
+  overrideTools: z.array(llmToolEnum).optional(),
+  memoryScope: memoryScopeEnum.default('channel'),
+  policy: channelBotPolicySchema.optional(),
+});
+
+export type CreateChannelBotDTO = z.infer<typeof createChannelBotDTOSchema>;
+
+export const updateChannelBotDTOSchema = z.object({
+  enabled: z.boolean().optional(),
+  overridePrompt: z.string().max(4000).optional().nullable(),
+  overrideTools: z.array(llmToolEnum).optional().nullable(),
+  memoryScope: memoryScopeEnum.optional(),
+  policy: channelBotPolicySchema.partial().optional(),
+});
+
+export type UpdateChannelBotDTO = z.infer<typeof updateChannelBotDTOSchema>;
+
 // ── 导出子 schemas 供外部使用 ──
 export {
   llmConfigSchema,
@@ -187,4 +220,5 @@ export {
   reminderConfigSchema,
   autoResponderConfigSchema,
   autoResponderRuleSchema,
+  channelBotPolicySchema,
 };

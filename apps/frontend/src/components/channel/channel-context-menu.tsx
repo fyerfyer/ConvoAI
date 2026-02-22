@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Edit2, FolderInput, Trash2 } from 'lucide-react';
+import { Edit2, FolderInput, Trash2, Bot } from 'lucide-react';
 import { ChannelResponse, CHANNEL } from '@discord-platform/shared';
 
 interface ChannelContextMenuProps {
@@ -12,6 +12,7 @@ interface ChannelContextMenuProps {
   onRename: (channel: ChannelResponse) => void;
   onMove: (channel: ChannelResponse, categoryId: string | null) => void;
   onDelete: (channel: ChannelResponse) => void;
+  onManageBots?: (channel: ChannelResponse) => void;
 }
 
 export default function ChannelContextMenu({
@@ -22,6 +23,7 @@ export default function ChannelContextMenu({
   onRename,
   onMove,
   onDelete,
+  onManageBots,
 }: ChannelContextMenuProps) {
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -117,6 +119,20 @@ export default function ChannelContextMenu({
           </div>
         )}
       </div>
+
+      {/* Manage Bots */}
+      {onManageBots && (
+        <button
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
+          onClick={() => {
+            onManageBots(channel);
+            onClose();
+          }}
+        >
+          <Bot className="h-4 w-4" />
+          Manage Channel Bots
+        </button>
+      )}
 
       {/* Separator */}
       <div className="my-1 h-px bg-gray-700" />
