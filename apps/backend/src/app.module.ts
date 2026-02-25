@@ -15,6 +15,8 @@ import { ChannelModule } from './modules/channel/channel.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
 import { BotModule } from './modules/bot/bot.module';
 import { MemoryModule } from './modules/memory/memory.module';
+import { QueueModule } from './common/configs/queue/queue.module';
+import { ThrottleModule } from './common/configs/throttle/throttle.module';
 
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
@@ -26,6 +28,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     MongoModule,
     RedisModule,
     JwtConfigModule,
+    QueueModule,
+    ThrottleModule,
     AuthModule,
     UserModule,
     GuildModule,

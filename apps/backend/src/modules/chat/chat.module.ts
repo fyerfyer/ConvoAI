@@ -6,6 +6,7 @@ import { Channel, channelSchema } from '../channel/schemas/channel.schema';
 import { ChannelModule } from '../channel/channel.module';
 import { ChatController } from './chat.controller';
 import { MemberModule } from '../member/member.module';
+import { MessageProducer } from './message.producer';
 
 @Module({
   imports: [
@@ -16,8 +17,8 @@ import { MemberModule } from '../member/member.module';
     MemberModule,
     ChannelModule,
   ],
-  providers: [ChatService],
-  exports: [ChatService],
+  providers: [ChatService, MessageProducer],
+  exports: [ChatService, MessageProducer],
   controllers: [ChatController],
 })
 export class ChatModule {}

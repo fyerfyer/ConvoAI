@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
 
 import { MessageDocument } from '../chat/schemas/message.schema';
@@ -15,7 +13,6 @@ import { ChannelBotDocument } from './schemas/channel-bot.schema';
 import { AgentRunner } from './runners/agent-runner.service';
 
 import {
-  MESSAGE_EVENT,
   AgentContextMessage,
   BotExecutionContext,
   EXECUTION_MODE,
@@ -41,9 +38,8 @@ export class BotOrchestratorService {
   // 记录已知的 Bot 用户 ID，防止 Bot 消息触发循环
   private botUserIds = new Set<string>();
 
-  // 监听所有创建的消息
-  @OnEvent(MESSAGE_EVENT.CREATE_MESSAGE, { async: true })
-  async handleMessageCreated(message: MessageDocument): Promise<void> {
+  // 不使用 OnEvent 装饰器而是让 bullmq 调用
+  async handleMessageForBotDetection(message: MessageDocument): Promise<void> {
     try {
       const sender = message.sender as UserDocument;
 
@@ -131,7 +127,6 @@ export class BotOrchestratorService {
         return;
       }
 
-      // Build context once for all dispatches
       const context = await this.buildContext(channelId);
       const currentMsgId = message._id.toString();
       const filteredContext = context.filter(
@@ -181,7 +176,7 @@ export class BotOrchestratorService {
           rawContent: message.content,
           context: contextMessages,
           executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
-          // Channel-level overrides
+          // Channel 覆写
           channelBotId: binding._id.toString(),
           overrideSystemPrompt: binding.overridePrompt,
           overrideTools: binding.overrideTools as LlmToolValue[] | undefined,

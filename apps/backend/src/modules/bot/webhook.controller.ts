@@ -10,6 +10,7 @@ import {
   Sse,
   MessageEvent,
 } from '@nestjs/common';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Observable, Subject, filter, map } from 'rxjs';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -60,6 +61,10 @@ export class WebhookController {
     );
   }
 
+  @Throttle({
+    short: { limit: 2, ttl: 1000 },
+    medium: { limit: 20, ttl: 10000 },
+  })
   @Post(':botId/:token/messages')
   @UseGuards(WebhookGuard)
   async postMessage(
@@ -97,6 +102,7 @@ export class WebhookController {
     };
   }
 
+  @SkipThrottle()
   // 与前端 SSE 连接，推送 Bot 事件流
   @Sse('stream/:channelId')
   streamBotEvents(

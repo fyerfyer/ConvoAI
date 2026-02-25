@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Readable } from 'stream';
 import { randomBytes } from 'crypto';
 
@@ -17,10 +16,10 @@ import {
 } from '../context/context-builder.service';
 import { MemoryService } from '../../memory/services/memory.service';
 import { UserDocument } from '../../user/schemas/user.schema';
+import { BotStreamProducer } from '../bot-stream.producer';
 
 import {
   BotExecutionContext,
-  BOT_INTERNAL_EVENT,
   BotStreamStartPayload,
   BotStreamChunkPayload,
   LLM_PROVIDER,
@@ -47,7 +46,7 @@ export class LlmRunner {
     private readonly toolExecutor: ToolExecutorService,
     private readonly contextBuilder: ContextBuilder,
     private readonly memoryService: MemoryService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly botStreamProducer: BotStreamProducer,
     private readonly logger: AppLogger,
   ) {}
 
@@ -246,7 +245,7 @@ export class LlmRunner {
       channelId: ctx.channelId,
       streamId,
     };
-    this.eventEmitter.emit(BOT_INTERNAL_EVENT.BOT_STREAM_START, startPayload);
+    await this.botStreamProducer.emitStreamStart(startPayload);
 
     try {
       const response = await this.httpService.axiosRef.post(
@@ -287,7 +286,7 @@ export class LlmRunner {
         content: '',
         done: true,
       };
-      this.eventEmitter.emit(BOT_INTERNAL_EVENT.BOT_STREAM_END, endPayload);
+      await this.botStreamProducer.emitStreamEnd(endPayload);
 
       // 尝试非流式回退
       this.logger.warn(
@@ -321,10 +320,7 @@ export class LlmRunner {
                 content: accumulatedContent,
                 done: true,
               };
-              this.eventEmitter.emit(
-                BOT_INTERNAL_EVENT.BOT_STREAM_END,
-                endPayload,
-              );
+              this.botStreamProducer.emitStreamEnd(endPayload);
             }
             continue;
           }
@@ -342,10 +338,7 @@ export class LlmRunner {
                   content: delta,
                   done: false,
                 };
-                this.eventEmitter.emit(
-                  BOT_INTERNAL_EVENT.BOT_STREAM_CHUNK,
-                  chunkPayload,
-                );
+                this.botStreamProducer.emitStreamChunk(chunkPayload);
               }
             } catch {
               // 跳过无法解析的行

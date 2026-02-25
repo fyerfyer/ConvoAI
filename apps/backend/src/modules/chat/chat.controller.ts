@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtGuard } from '../../common/guards/jwt.guard';
 import { ChatService } from './chat.service';
 import {
@@ -28,6 +29,10 @@ import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
+  @Throttle({
+    short: { limit: 5, ttl: 1000 },
+    medium: { limit: 30, ttl: 10000 },
+  })
   @Post()
   async createMessage(
     @User() user: JwtPayload,
@@ -39,7 +44,9 @@ export class ChatController {
       createMessageDTO,
     );
     return {
-      data: await this.chatService.toMessageResponse(message),
+      data: (await this.chatService.toMessageResponse(
+        message,
+      )) as MessageResponse,
       statusCode: HttpStatus.CREATED,
       message: 'Message sent successfully',
     };
@@ -60,11 +67,15 @@ export class ChatController {
       messages.map((msg) => this.chatService.toMessageResponse(msg)),
     );
     return {
-      data: { messages: mappedMessages },
+      data: { messages: mappedMessages as MessageResponse[] },
       statusCode: HttpStatus.OK,
     };
   }
 
+  @Throttle({
+    short: { limit: 1, ttl: 1000 },
+    long: { limit: 10, ttl: 60000 },
+  })
   @Post('attachments/presign')
   async getAttachmentPresignedUrl(
     @User() user: JwtPayload,

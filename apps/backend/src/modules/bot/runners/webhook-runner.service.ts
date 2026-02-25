@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
 import { createHmac, randomBytes } from 'crypto';
@@ -9,13 +8,13 @@ import { BotDocument } from '../schemas/bot.schema';
 import { ChatService } from '../../chat/chat.service';
 import { UserDocument } from '../../user/schemas/user.schema';
 import { AppLogger } from '../../../common/configs/logger/logger.service';
+import { BotStreamProducer } from '../bot-stream.producer';
 
 import {
   BotExecutionContext,
   AgentPayload,
   AgentResponse,
   AGENT_EVENT_TYPE,
-  BOT_INTERNAL_EVENT,
   BotStreamStartPayload,
   BotStreamChunkPayload,
 } from '@discord-platform/shared';
@@ -25,7 +24,7 @@ export class WebhookRunner {
   constructor(
     private readonly httpService: HttpService,
     private readonly chatService: ChatService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly botStreamProducer: BotStreamProducer,
     private readonly configService: ConfigService,
     private readonly logger: AppLogger,
   ) {}
@@ -124,7 +123,7 @@ export class WebhookRunner {
       channelId,
       streamId,
     };
-    this.eventEmitter.emit(BOT_INTERNAL_EVENT.BOT_STREAM_START, startPayload);
+    await this.botStreamProducer.emitStreamStart(startPayload);
 
     return new Promise<void>((resolve, reject) => {
       let buffer = '';
@@ -146,10 +145,7 @@ export class WebhookRunner {
                 content: accumulatedContent,
                 done: true,
               };
-              this.eventEmitter.emit(
-                BOT_INTERNAL_EVENT.BOT_STREAM_END,
-                chunkPayload,
-              );
+              this.botStreamProducer.emitStreamEnd(chunkPayload);
               return;
             }
 
@@ -163,10 +159,7 @@ export class WebhookRunner {
                 content: textDelta,
                 done: false,
               };
-              this.eventEmitter.emit(
-                BOT_INTERNAL_EVENT.BOT_STREAM_CHUNK,
-                chunkPayload,
-              );
+              this.botStreamProducer.emitStreamChunk(chunkPayload);
             } catch {
               accumulatedContent += data;
               const chunkPayload: BotStreamChunkPayload = {
@@ -175,10 +168,7 @@ export class WebhookRunner {
                 content: data,
                 done: false,
               };
-              this.eventEmitter.emit(
-                BOT_INTERNAL_EVENT.BOT_STREAM_CHUNK,
-                chunkPayload,
-              );
+              this.botStreamProducer.emitStreamChunk(chunkPayload);
             }
           }
         }

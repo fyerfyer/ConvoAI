@@ -1,4 +1,5 @@
 import { Body, Controller, HttpStatus, Post, UsePipes } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
   AuthResponse,
@@ -14,6 +15,10 @@ import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Throttle({
+    short: { limit: 1, ttl: 1000 },
+    long: { limit: 3, ttl: 60000 },
+  })
   @Post('register')
   @UsePipes(new ZodValidationPipe(registerSchema))
   async register(
@@ -27,6 +32,10 @@ export class AuthController {
     };
   }
 
+  @Throttle({
+    short: { limit: 2, ttl: 1000 },
+    medium: { limit: 5, ttl: 10000 },
+  })
   @Post('login')
   @UsePipes(new ZodValidationPipe(loginSchema))
   async login(@Body() loginDTO: LoginDTO): Promise<ApiResponse<AuthResponse>> {

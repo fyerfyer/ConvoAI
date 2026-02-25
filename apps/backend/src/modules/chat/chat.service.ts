@@ -9,16 +9,15 @@ import {
   MessageDocument,
   MessageModel,
 } from './schemas/message.schema';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   AttachmentPresignedUrlDTO,
   AttachmentValue,
   BUCKETS,
   CreateMessageDTO,
   MAX_ATTACHMENT_SIZE,
-  MESSAGE_EVENT,
   MESSAGE_TYPE,
 } from '@discord-platform/shared';
+import { MessageProducer } from './message.producer';
 import { ClientSession, Types, Document } from 'mongoose';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
 import { UserDocument } from '../user/schemas/user.schema';
@@ -27,7 +26,7 @@ import { S3Service } from '../../common/configs/s3/s3.service';
 @Injectable()
 export class ChatService {
   constructor(
-    private eventEmitter: EventEmitter2,
+    private readonly messageProducer: MessageProducer,
     @InjectModel(Message.name) private readonly messageModel: MessageModel,
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
     private readonly s3Service: S3Service,
@@ -77,8 +76,24 @@ export class ChatService {
       },
     ]);
 
-    this.eventEmitter.emit(MESSAGE_EVENT.CREATE_MESSAGE, populatedMessage);
+    await this.messageProducer.publishMessageCreated(
+      populatedMessage._id.toString(),
+      channelId,
+    );
     return populatedMessage;
+  }
+
+  // bullmq 从数据库中重新获取消息。
+  async findMessageById(messageId: string): Promise<MessageDocument | null> {
+    return this.messageModel
+      .findById(messageId)
+      .populate('sender', 'name avatar isBot')
+      .populate({
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      })
+      .exec();
   }
 
   // TODO：当前是获取 beforeId 之前的消息，后续可以加上 afterId 和 aroundId
@@ -254,9 +269,7 @@ export class ChatService {
     };
   }
 
-  /**
-   * 删除某个 sender 的所有消息（用于 Bot 删除时级联清理）
-   */
+  // 删除某个 sender 的所有消息（用于 Bot 删除时清理）
   async deleteMessagesBySender(senderId: string): Promise<number> {
     const result = await this.messageModel.deleteMany({
       sender: new Types.ObjectId(senderId),

@@ -9,6 +9,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtGuard } from '../../common/guards/jwt.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
@@ -44,8 +45,6 @@ export class BotController {
     private readonly templateRegistry: TemplateRegistry,
   ) {}
 
-  // ── Bot Definition (Guild-level) ──
-
   @Get('templates')
   async listTemplates(): Promise<ApiResponse<{ templates: TemplateInfo[] }>> {
     const templates = this.templateRegistry.listTemplates();
@@ -55,6 +54,10 @@ export class BotController {
     };
   }
 
+  @Throttle({
+    short: { limit: 2, ttl: 1000 },
+    long: { limit: 10, ttl: 60000 },
+  })
   @Post()
   async createBot(
     @User() user: JwtPayload,

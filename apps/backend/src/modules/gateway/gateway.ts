@@ -14,11 +14,7 @@ import {
   CreateMessageDTO,
   createMessageDTOSchema,
   JwtPayload,
-  MESSAGE_EVENT,
-  BOT_INTERNAL_EVENT,
   SOCKET_EVENT,
-  BotStreamStartPayload,
-  BotStreamChunkPayload,
 } from '@discord-platform/shared';
 import { SocketKeys } from '../../common/constants/socket-keys.constant';
 import {
@@ -28,12 +24,12 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 import { GlobalWsExceptionFilter } from './filters/ws-exception.filter';
 import { ChatService } from '../chat/chat.service';
-import { OnEvent } from '@nestjs/event-emitter';
-import { MessageDocument } from '../chat/schemas/message.schema';
 import { ChannelService } from '../channel/channel.service';
+import { WsThrottlerGuard } from '../../common/guards/ws-throttler.guard';
 
 @WebSocketGateway({
   cors: {
@@ -43,6 +39,7 @@ import { ChannelService } from '../channel/channel.service';
 })
 @UseFilters(new GlobalWsExceptionFilter())
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+@SkipThrottle() // Ws gateway 单独限流
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -127,7 +124,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // 这里只负责消息的创建，不负责消息的广播
-  @UseGuards(WsJwtGuard)
+  @UseGuards(WsJwtGuard, WsThrottlerGuard)
+  @Throttle({
+    short: { limit: 5, ttl: 1000 },
+    medium: { limit: 30, ttl: 10000 },
+  })
   @SubscribeMessage(SOCKET_EVENT.SEND_MESSAGE)
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
@@ -139,7 +140,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { status: 'sent', data: { tempId: payload.nonce } };
   }
 
-  @UseGuards(WsJwtGuard)
+  @UseGuards(WsJwtGuard, WsThrottlerGuard)
+  @Throttle({
+    short: { limit: 3, ttl: 1000 },
+    medium: { limit: 20, ttl: 10000 },
+  })
   @SubscribeMessage(SOCKET_EVENT.TYPING)
   async handleTyping(
     @ConnectedSocket() client: Socket,
@@ -152,38 +157,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       channelId,
       isTyping,
     });
-  }
-
-  // 监听全局消息事件
-  @OnEvent(MESSAGE_EVENT.CREATE_MESSAGE)
-  async handleMessageCreated(message: MessageDocument) {
-    const roomId = message.channelId.toString();
-    const response = await this.chatService.toMessageResponse(message);
-
-    // 向房间内所有用户广播消息
-    this.server.to(roomId).emit(SOCKET_EVENT.NEW_MESSAGE, response);
-  }
-
-  // Bot 流事件
-  @OnEvent(BOT_INTERNAL_EVENT.BOT_STREAM_START)
-  handleBotStreamStart(payload: BotStreamStartPayload) {
-    this.server
-      .to(payload.channelId)
-      .emit(SOCKET_EVENT.BOT_STREAM_START, payload);
-  }
-
-  @OnEvent(BOT_INTERNAL_EVENT.BOT_STREAM_CHUNK)
-  handleBotStreamChunk(payload: BotStreamChunkPayload) {
-    this.server
-      .to(payload.channelId)
-      .emit(SOCKET_EVENT.BOT_STREAM_CHUNK, payload);
-  }
-
-  @OnEvent(BOT_INTERNAL_EVENT.BOT_STREAM_END)
-  handleBotStreamEnd(payload: BotStreamChunkPayload) {
-    this.server
-      .to(payload.channelId)
-      .emit(SOCKET_EVENT.BOT_STREAM_END, payload);
   }
 
   // Voice Events

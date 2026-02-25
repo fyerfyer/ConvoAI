@@ -27,6 +27,8 @@ import { ContextBuilder } from './context/context-builder.service';
 
 import { EncryptionService } from './crypto/encryption.service';
 
+import { BotStreamProducer } from './bot-stream.producer';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -59,6 +61,8 @@ import { EncryptionService } from './crypto/encryption.service';
     WebhookRunner,
     BuiltinRunner,
     LlmRunner,
+
+    BotStreamProducer,
   ],
   controllers: [BotController, WebhookController],
   exports: [
