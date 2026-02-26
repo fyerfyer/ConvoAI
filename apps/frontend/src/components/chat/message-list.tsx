@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { Hash } from 'lucide-react';
+import { Hash, MessageCircle } from 'lucide-react';
 import MessageItem from './message-item';
 import BotStreamMessage from './bot-stream-message';
 import { MessageResponse } from '@discord-platform/shared';
@@ -71,17 +71,22 @@ export default function MessageList({
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex items-end justify-center pb-8">
-        <div className="text-center">
-          <div className="mb-4 mx-auto h-16 w-16 rounded-full bg-gray-600 flex items-center justify-center">
-            <Hash className="h-8 w-8 text-gray-400" />
+        <div className="text-center max-w-md">
+          <div className="mb-4 mx-auto h-[72px] w-[72px] rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center">
+            <Hash className="h-9 w-9 text-indigo-400" />
           </div>
-          <h3 className="text-xl font-bold text-white mb-1">
+          <h3 className="text-2xl font-bold text-white mb-2">
             Welcome to #{channelName}
           </h3>
-          <p className="text-gray-400 text-sm">
-            This is the start of the #{channelName} channel. Send a message to
-            get the conversation going!
+          <p className="text-gray-400 text-sm leading-relaxed">
+            This is the start of the{' '}
+            <span className="font-semibold text-gray-300">#{channelName}</span>{' '}
+            channel.
           </p>
+          <div className="mt-4 inline-flex items-center gap-2 text-xs text-gray-500 bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-700/50">
+            <MessageCircle className="h-3 w-3" />
+            Send a message to get the conversation going!
+          </div>
         </div>
       </div>
     );
@@ -97,15 +102,20 @@ export default function MessageList({
         {/* Channel beginning indicator */}
         {!hasOlderMessages && (
           <div className="px-4 pt-8 pb-4">
-            <div className="mb-2 h-16 w-16 rounded-full bg-gray-600 flex items-center justify-center">
-              <Hash className="h-8 w-8 text-gray-400" />
+            <div className="mb-3 h-[72px] w-[72px] rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center">
+              <Hash className="h-9 w-9 text-indigo-400" />
             </div>
             <h3 className="text-2xl font-bold text-white mb-1">
               Welcome to #{channelName}
             </h3>
             <p className="text-gray-400 text-sm">
-              This is the beginning of the #{channelName} channel.
+              This is the beginning of the{' '}
+              <span className="font-semibold text-gray-300">
+                #{channelName}
+              </span>{' '}
+              channel.
             </p>
+            <div className="mt-4 border-b border-gray-700/50" />
           </div>
         )}
 

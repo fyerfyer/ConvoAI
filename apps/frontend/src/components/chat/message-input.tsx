@@ -8,12 +8,25 @@ import {
   useMemo,
   useEffect,
 } from 'react';
-import { Send, PlusCircle, X, FileIcon, Bot, Mic } from 'lucide-react';
+import {
+  Send,
+  PlusCircle,
+  X,
+  FileIcon,
+  Bot,
+  Mic,
+  Terminal,
+  ChevronRight,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { AttachmentDto, MAX_ATTACHMENT_SIZE } from '@discord-platform/shared';
+import {
+  AttachmentDto,
+  MAX_ATTACHMENT_SIZE,
+  ChannelSlashCommandInfo,
+} from '@discord-platform/shared';
 import { toast } from '@/hooks/use-toast';
 import { useMembers } from '@/hooks/use-member';
-import { useBots } from '@/hooks/use-bot';
+import { useBots, useChannelCommands } from '@/hooks/use-bot';
 import AudioRecorder from './audio-recorder';
 
 interface PendingFile {
@@ -23,6 +36,7 @@ interface PendingFile {
 
 interface MessageInputProps {
   guildId: string;
+  channelId: string;
   channelName: string;
   onSendMessage: (content: string, attachments?: AttachmentDto[]) => void;
   onTyping?: (isTyping: boolean) => void;
@@ -31,8 +45,20 @@ interface MessageInputProps {
   onFilesSelected?: (files: File[]) => Promise<AttachmentDto[]>;
 }
 
+// Slash command completion state machine
+type SlashState =
+  | { phase: 'idle' }
+  | { phase: 'picking-command'; query: string }
+  | {
+      phase: 'filling-params';
+      command: ChannelSlashCommandInfo;
+      filledParams: Record<string, string>;
+      currentParamIndex: number;
+    };
+
 export default function MessageInput({
   guildId,
+  channelId,
   channelName,
   onSendMessage,
   onTyping,
@@ -47,12 +73,166 @@ export default function MessageInput({
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+
+  // Slash command state
+  const [slashState, setSlashState] = useState<SlashState>({ phase: 'idle' });
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: guildMembers = [] } = useMembers(guildId);
   const { data: gots = [] } = useBots(guildId);
+  const { data: channelCommands = [] } = useChannelCommands(channelId);
+
+  // ── Slash command candidates ──
+  const slashCandidates = useMemo(() => {
+    if (slashState.phase !== 'picking-command') return [];
+    const q = slashState.query.toLowerCase();
+    return channelCommands
+      .filter(
+        (cmd) =>
+          q.length === 0 ||
+          cmd.name.includes(q) ||
+          cmd.description.toLowerCase().includes(q),
+      )
+      .slice(0, 10);
+  }, [channelCommands, slashState]);
+
+  // Currently filling param info
+  const currentParam = useMemo(() => {
+    if (slashState.phase !== 'filling-params') return null;
+    const params = slashState.command.params || [];
+    if (slashState.currentParamIndex >= params.length) return null;
+    return params[slashState.currentParamIndex];
+  }, [slashState]);
+
+  const closeSlash = useCallback(() => {
+    setSlashState({ phase: 'idle' });
+    setSlashSelectedIndex(0);
+  }, []);
+
+  const applySlashCommand = useCallback(
+    (index: number) => {
+      const cmd = slashCandidates[index];
+      if (!cmd) return;
+
+      const params = cmd.params || [];
+      if (params.length === 0) {
+        // No params, just insert the command
+        setContent(`/${cmd.name} `);
+        setSlashState({ phase: 'idle' });
+      } else {
+        // Start param filling mode
+        setContent(`/${cmd.name} `);
+        setSlashState({
+          phase: 'filling-params',
+          command: cmd,
+          filledParams: {},
+          currentParamIndex: 0,
+        });
+      }
+      setSlashSelectedIndex(0);
+
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+    },
+    [slashCandidates],
+  );
+
+  const updateSlashState = useCallback(
+    (nextContent: string) => {
+      // ── Already in param-filling mode ──
+      if (slashState.phase === 'filling-params') {
+        const trimmed = nextContent.trim();
+        const parts = trimmed.split(/\s+/);
+        const cmdName = parts[0]?.slice(1); // remove leading /
+        if (!cmdName || cmdName !== slashState.command.name) {
+          closeSlash();
+          return;
+        }
+
+        const paramValues = parts.slice(1);
+        const params = slashState.command.params || [];
+        if (params.length === 0) {
+          setSlashState({ phase: 'idle' });
+          return;
+        }
+
+        const filledParams: Record<string, string> = {};
+        paramValues.forEach((val, i) => {
+          if (i < params.length) {
+            filledParams[params[i].name] = val;
+          }
+        });
+
+        // Cap at last param so multi-word values for the final param stay visible
+        const trailingSpace = nextContent.endsWith(' ');
+        const rawIdx = trailingSpace
+          ? paramValues.length
+          : Math.max(0, paramValues.length - 1);
+        const currentIdx = Math.min(rawIdx, params.length - 1);
+
+        setSlashState({
+          phase: 'filling-params',
+          command: slashState.command,
+          filledParams,
+          currentParamIndex: currentIdx,
+        });
+        return;
+      }
+
+      // ── Not a slash command ──
+      const trimmed = nextContent;
+      if (!trimmed.startsWith('/')) {
+        if (slashState.phase !== 'idle') closeSlash();
+        return;
+      }
+
+      const firstSpace = trimmed.indexOf(' ');
+      if (firstSpace > 0) {
+        // User typed /commandname + space — try to auto-enter param filling
+        const typedCmd = trimmed.slice(1, firstSpace).toLowerCase();
+        const matchedCmd = channelCommands.find((c) => c.name === typedCmd);
+
+        if (matchedCmd && (matchedCmd.params || []).length > 0) {
+          // Auto-enter filling-params regardless of whether autocomplete was used
+          const splitParts = trimmed.split(/\s+/);
+          const paramValues = splitParts.slice(1).filter((v) => v.length > 0);
+          const params = matchedCmd.params || [];
+          const filledParams: Record<string, string> = {};
+          paramValues.forEach((val, i) => {
+            if (i < params.length) filledParams[params[i].name] = val;
+          });
+
+          const trailingSpace = trimmed.endsWith(' ');
+          const rawIdx = trailingSpace
+            ? paramValues.length
+            : Math.max(0, paramValues.length - 1);
+          const currentIdx = Math.min(rawIdx, params.length - 1);
+
+          setSlashState({
+            phase: 'filling-params',
+            command: matchedCmd,
+            filledParams,
+            currentParamIndex: currentIdx,
+          });
+          setSlashSelectedIndex(0);
+        } else if (slashState.phase === 'picking-command') {
+          closeSlash();
+        }
+        return;
+      }
+
+      // Still typing the command name — show autocomplete picker
+      const query = trimmed.slice(1); // remove /
+      setSlashState({ phase: 'picking-command', query });
+      setSlashSelectedIndex(0);
+    },
+    [slashState, closeSlash, channelCommands],
+  );
 
   // Unified mention candidates: members + bots
   const mentionCandidates = useMemo(() => {
@@ -256,6 +436,7 @@ export default function MessageInput({
     setContent('');
     setPendingFiles([]);
     closeMention();
+    closeSlash();
 
     // Stop typing indicator
     if (typingTimeoutRef.current) {
@@ -277,6 +458,7 @@ export default function MessageInput({
     onTyping,
     onFilesSelected,
     closeMention,
+    closeSlash,
   ]);
 
   const handleRecordingComplete = useCallback(
@@ -305,9 +487,53 @@ export default function MessageInput({
     [onFilesSelected, onSendMessage],
   );
 
+  // Determine which popup is active (slash takes priority)
+  const isSlashActive =
+    slashState.phase === 'picking-command' ||
+    slashState.phase === 'filling-params';
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (mentionOpen && mentionCandidates.length > 0) {
+      // Slash command keyboard navigation
+      if (
+        slashState.phase === 'picking-command' &&
+        slashCandidates.length > 0
+      ) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSlashSelectedIndex((prev) => (prev + 1) % slashCandidates.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSlashSelectedIndex((prev) =>
+            prev === 0 ? slashCandidates.length - 1 : prev - 1,
+          );
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          applySlashCommand(slashSelectedIndex);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeSlash();
+          return;
+        }
+      }
+
+      // Param filling: Tab to confirm param and move to next
+      if (slashState.phase === 'filling-params') {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeSlash();
+          return;
+        }
+      }
+
+      // Mention keyboard navigation
+      if (!isSlashActive && mentionOpen && mentionCandidates.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
           setMentionSelectedIndex(
@@ -340,6 +566,12 @@ export default function MessageInput({
       }
     },
     [
+      slashState,
+      slashCandidates,
+      slashSelectedIndex,
+      applySlashCommand,
+      closeSlash,
+      isSlashActive,
       mentionOpen,
       mentionCandidates,
       mentionSelectedIndex,
@@ -354,14 +586,23 @@ export default function MessageInput({
       const nextValue = e.target.value;
       setContent(nextValue);
       handleTyping();
-      updateMentionState(nextValue);
+
+      // Update slash state first (takes priority)
+      updateSlashState(nextValue);
+
+      // Only update mention state if not in slash mode
+      if (!nextValue.startsWith('/')) {
+        updateMentionState(nextValue);
+      } else {
+        closeMention();
+      }
 
       // Auto-resize textarea
       const textarea = e.target;
       textarea.style.height = 'auto';
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     },
-    [handleTyping, updateMentionState],
+    [handleTyping, updateSlashState, updateMentionState, closeMention],
   );
 
   const handleFileSelect = useCallback(
@@ -479,7 +720,134 @@ export default function MessageInput({
       <div
         className={`relative flex items-end bg-gray-600 px-4 py-2 transition-colors focus-within:ring-1 focus-within:ring-indigo-500 ${pendingFiles.length > 0 ? 'rounded-b-lg' : 'rounded-lg'}`}
       >
-        {mentionOpen && (
+        {/* ── Slash Command Autocomplete Popup ── */}
+        {slashState.phase === 'picking-command' &&
+          slashCandidates.length > 0 && (
+            <div className="absolute bottom-full left-4 right-4 mb-2 rounded-lg border border-gray-600 bg-gray-800 shadow-xl overflow-hidden z-20">
+              <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/80">
+                <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                  Slash Commands
+                </span>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {slashCandidates.map((cmd, index) => (
+                  <button
+                    key={`${cmd.botId}-${cmd.name}`}
+                    type="button"
+                    className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
+                      index === slashSelectedIndex
+                        ? 'bg-indigo-500/20 text-white'
+                        : 'text-gray-300 hover:bg-gray-700/70'
+                    }`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applySlashCommand(index);
+                    }}
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                      <Terminal className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-emerald-300 font-semibold">
+                          /{cmd.name}
+                        </span>
+                        {cmd.params && cmd.params.length > 0 && (
+                          <span className="text-[10px] text-gray-500">
+                            {cmd.params.length} param
+                            {cmd.params.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {cmd.description && (
+                        <span className="text-xs text-gray-400 truncate block">
+                          {cmd.description}
+                        </span>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">
+                      {cmd.botName}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+        {/* ── Param Filling Guide ── */}
+        {slashState.phase === 'filling-params' && currentParam && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-lg border border-gray-600 bg-gray-800 shadow-xl overflow-hidden z-20">
+            <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/80">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/10">
+                  <Terminal className="h-3.5 w-3.5 text-emerald-400" />
+                </div>
+                <span className="font-mono text-sm text-emerald-300 font-semibold">
+                  /{slashState.command.name}
+                </span>
+                <ChevronRight className="h-3 w-3 text-gray-500" />
+                <span className="text-sm text-yellow-300 font-medium">
+                  {currentParam.name}
+                  {currentParam.required && (
+                    <span className="text-red-400 ml-0.5">*</span>
+                  )}
+                </span>
+                <span className="ml-1 rounded-full bg-gray-700 px-2 py-0.5 text-[10px] text-gray-400">
+                  {currentParam.type}
+                </span>
+              </div>
+            </div>
+            <div className="px-3 py-2.5">
+              {currentParam.description && (
+                <p className="text-xs text-gray-400 mb-2">
+                  {currentParam.description}
+                </p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {(slashState.command.params || []).map((p, i) => {
+                  const filledValue = slashState.filledParams[p.name];
+                  const isCurrent = i === slashState.currentParamIndex;
+                  const isDone = i < slashState.currentParamIndex;
+                  return (
+                    <span
+                      key={p.name}
+                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border ${
+                        isDone
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                          : isCurrent
+                            ? 'border-yellow-400/30 bg-yellow-400/10 text-yellow-300 font-medium'
+                            : 'border-gray-600 bg-gray-700/50 text-gray-500'
+                      }`}
+                    >
+                      {isDone ? '✓ ' : ''}
+                      {p.name}
+                      {p.required ? '*' : ''}
+                      {isDone && filledValue && (
+                        <span className="text-emerald-400/70 max-w-[80px] truncate">
+                          ={filledValue}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+              {/* Hint for last param */}
+              {slashState.currentParamIndex ===
+                (slashState.command.params || []).length - 1 &&
+                (slashState.command.params || []).length > 0 && (
+                  <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
+                    <kbd className="px-1 py-0.5 rounded bg-gray-700 text-gray-400 text-[9px] font-mono">
+                      Enter
+                    </kbd>
+                    to send
+                  </p>
+                )}
+            </div>
+          </div>
+        )}
+
+        {/* ── @Mention Popup ── */}
+        {!isSlashActive && mentionOpen && (
           <div className="absolute bottom-full left-4 right-4 mb-2 rounded-md border border-gray-600 bg-gray-800 shadow-lg overflow-hidden z-20">
             {mentionCandidates.length > 0 ? (
               mentionCandidates.map((candidate, index) => {
@@ -547,7 +915,7 @@ export default function MessageInput({
           value={content}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder={`Message #${channelName}`}
+          placeholder={`Message #${channelName}  •  Type / for commands`}
           className="mx-2 flex-1 resize-none bg-transparent text-gray-200 placeholder:text-gray-400 outline-none text-sm max-h-[200px] py-1.5"
           rows={1}
           disabled={disabled || isUploading}

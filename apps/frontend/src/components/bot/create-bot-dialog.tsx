@@ -28,14 +28,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { useCreateBot, useTemplates } from '@/hooks/use-bot';
+import { useChannels } from '@/hooks/use-channel';
 import {
   EXECUTION_MODE,
   LLM_PROVIDER,
   LLM_TOOL,
   BOT_SCOPE,
   TemplateInfo,
+  type SlashCommand,
+  type BotSchedule,
+  type BotEventSubscription,
 } from '@discord-platform/shared';
 import { cn } from '@/lib/utils';
+import TriggerConfigSection from './trigger-config-section';
 
 type Step = 'mode' | 'config' | 'success';
 
@@ -130,6 +135,13 @@ export default function CreateBotDialog({
   const [llmCustomBaseUrl, setLlmCustomBaseUrl] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
 
+  // Trigger config (shared across all modes)
+  const [commands, setCommands] = useState<SlashCommand[]>([]);
+  const [schedules, setSchedules] = useState<BotSchedule[]>([]);
+  const [eventSubscriptions, setEventSubscriptions] = useState<
+    BotEventSubscription[]
+  >([]);
+
   // Success state
   const [secretResult, setSecretResult] = useState<{
     webhookSecret?: string;
@@ -137,6 +149,7 @@ export default function CreateBotDialog({
     mode: string;
   } | null>(null);
 
+  const { data: channels = [] } = useChannels(guildId);
   const { data: templates = [] } = useTemplates();
   const createBot = useCreateBot();
 
@@ -210,7 +223,7 @@ export default function CreateBotDialog({
               temperature: llmTemperature,
               maxTokens: llmMaxTokens,
               tools: llmTools as Array<
-                'web-search' | 'code-execution' | 'image-generation'
+                'web-search' | 'code-execution'
               >,
               ...(llmProvider === LLM_PROVIDER.CUSTOM && llmCustomBaseUrl
                 ? { customBaseUrl: llmCustomBaseUrl }
@@ -221,6 +234,15 @@ export default function CreateBotDialog({
         default:
           return;
       }
+
+      // 附加触发器配置
+      if (commands.length > 0)
+        (payload as Record<string, unknown>).commands = commands;
+      if (schedules.length > 0)
+        (payload as Record<string, unknown>).schedules = schedules;
+      if (eventSubscriptions.length > 0)
+        (payload as Record<string, unknown>).eventSubscriptions =
+          eventSubscriptions;
 
       const result = await createBot.mutateAsync(payload);
       setSecretResult({
@@ -254,6 +276,9 @@ export default function CreateBotDialog({
     setLlmTools([]);
     setLlmCustomBaseUrl('');
     setShowApiKey(false);
+    setCommands([]);
+    setSchedules([]);
+    setEventSubscriptions([]);
     setSecretResult(null);
   };
 
@@ -1188,6 +1213,17 @@ export default function CreateBotDialog({
               </div>
             </>
           )}
+
+          {/* ── Triggers & Automation ── */}
+          <TriggerConfigSection
+            commands={commands}
+            onCommandsChange={setCommands}
+            schedules={schedules}
+            onSchedulesChange={setSchedules}
+            eventSubscriptions={eventSubscriptions}
+            onEventSubscriptionsChange={setEventSubscriptions}
+            channels={channels}
+          />
 
           {/* ── Description (all modes) ── */}
           <div>

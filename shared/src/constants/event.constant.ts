@@ -14,3 +14,17 @@ export const BOT_INTERNAL_EVENT = {
 
 export type BotInternalEvent =
   (typeof BOT_INTERNAL_EVENT)[keyof typeof BOT_INTERNAL_EVENT];
+
+export const MEMBER_EVENT = {
+  MEMBER_JOINED: 'member.joined',
+  MEMBER_LEFT: 'member.left',
+} as const;
+
+export type MemberEvent = (typeof MEMBER_EVENT)[keyof typeof MEMBER_EVENT];
+
+export interface MemberEventPayload {
+  guildId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
+}

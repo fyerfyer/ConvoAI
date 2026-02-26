@@ -20,11 +20,11 @@ import {
   CreateChannelBotDTO,
   UpdateChannelBotDTO,
   ChannelBotResponse,
-  BOT_STATUS,
-  BOT_SCOPE,
   MEMORY_SCOPE,
   EXECUTION_MODE,
+  BOT_STATUS,
   LlmToolValue,
+  ChannelSlashCommandInfo,
 } from '@discord-platform/shared';
 import { Types } from 'mongoose';
 
@@ -40,9 +40,6 @@ export class ChannelBotService {
     @InjectModel(Guild.name) private readonly guildModel: GuildModel,
   ) {}
 
-  /**
-   * 将 Bot 绑定到特定频道
-   */
   async bindBotToChannel(
     ownerId: string,
     dto: CreateChannelBotDTO,
@@ -102,9 +99,6 @@ export class ChannelBotService {
     return channelBot;
   }
 
-  /**
-   * 更新频道级 Bot 配置
-   */
   async updateChannelBot(
     bindingId: string,
     ownerId: string,
@@ -150,9 +144,6 @@ export class ChannelBotService {
     return channelBot;
   }
 
-  /**
-   * 解除频道 Bot 绑定
-   */
   async unbindBot(bindingId: string, ownerId: string): Promise<void> {
     const channelBot = await this.channelBotModel.findById(bindingId);
     if (!channelBot)
@@ -171,18 +162,12 @@ export class ChannelBotService {
     );
   }
 
-  /**
-   * 获取特定 Bot 的所有频道绑定
-   */
   async findBindingsByBot(botId: string): Promise<ChannelBotDocument[]> {
     return this.channelBotModel
       .find({ botId: new Types.ObjectId(botId) })
       .exec();
   }
 
-  /**
-   * 获取特定频道的所有活跃 Bot 绑定
-   */
   async findActiveBindingsByChannel(
     channelId: string,
   ): Promise<ChannelBotDocument[]> {
@@ -194,9 +179,6 @@ export class ChannelBotService {
       .exec();
   }
 
-  /**
-   * 获取特定频道的所有 Bot 绑定（包括未启用的）
-   */
   async findBindingsByChannel(
     channelId: string,
   ): Promise<ChannelBotDocument[]> {
@@ -205,18 +187,106 @@ export class ChannelBotService {
       .exec();
   }
 
-  /**
-   * 获取特定 Guild 中 Bot 的绑定数量
-   */
   async countBindingsByBot(botId: string): Promise<number> {
     return this.channelBotModel
       .countDocuments({ botId: new Types.ObjectId(botId) })
       .exec();
   }
 
-  /**
-   * 当 Bot 被删除时，清理所有频道绑定
-   */
+  async listChannelCommands(
+    channelId: string,
+  ): Promise<ChannelSlashCommandInfo[]> {
+    const bindings = await this.findActiveBindingsByChannel(channelId);
+
+    let guildId: string | undefined;
+    if (bindings.length > 0) {
+      guildId = String(bindings[0].guildId);
+    } else {
+      const channel = await this.channelModel
+        .findById(channelId)
+        .select('guild')
+        .lean()
+        .exec();
+      if (channel?.guild) {
+        guildId = String(channel.guild);
+      }
+    }
+
+    if (!guildId) {
+      return [];
+    }
+
+    const commands: ChannelSlashCommandInfo[] = [];
+    const seenBotIds = new Set<string>();
+
+    // 1. 获取显式绑定的 Bot 命令
+    for (const binding of bindings) {
+      const botId = String(binding.botId);
+      if (seenBotIds.has(botId)) continue;
+      seenBotIds.add(botId);
+      try {
+        const bot = await this.botModel
+          .findById(botId)
+          .populate('userId', 'name')
+          .lean()
+          .exec();
+        if (!bot) continue;
+        const botUser = bot.userId as unknown as { name: string };
+        for (const cmd of bot.commands || []) {
+          if (!cmd.name) continue;
+          commands.push({
+            name: cmd.name,
+            description: cmd.description || '',
+            botName: botUser?.name || 'Bot',
+            botId,
+            params: (cmd.params || []).map((p) => ({
+              name: p.name,
+              description: p.description || '',
+              type: p.type || 'string',
+              required: p.required ?? false,
+            })),
+          });
+        }
+      } catch {
+        // skip deleted bots
+      }
+    }
+
+    // 2. 获取 Guild-scope 的 Bot 命令
+    const guildBots = await this.botModel
+      .find({
+        guildId: new Types.ObjectId(guildId),
+        status: BOT_STATUS.ACTIVE,
+      })
+      .populate('userId', 'name')
+      .lean()
+      .exec();
+
+    for (const bot of guildBots) {
+      const botId = bot._id.toString();
+      if (seenBotIds.has(botId)) continue;
+      seenBotIds.add(botId);
+      const botUser = bot.userId as unknown as { name: string };
+      for (const cmd of bot.commands || []) {
+        if (!cmd.name) continue;
+        commands.push({
+          name: cmd.name,
+          description: cmd.description || '',
+          botName: botUser?.name || 'Bot',
+          botId,
+          params: (cmd.params || []).map((p) => ({
+            name: p.name,
+            description: p.description || '',
+            type: p.type || 'string',
+            required: p.required ?? false,
+          })),
+        });
+      }
+    }
+
+    return commands;
+  }
+
   async removeAllBindingsForBot(botId: string): Promise<void> {
     const result = await this.channelBotModel.deleteMany({
       botId: new Types.ObjectId(botId),
@@ -228,9 +298,6 @@ export class ChannelBotService {
     }
   }
 
-  /**
-   * 当频道被删除时，清理所有 Bot 绑定
-   */
   async removeAllBindingsForChannel(channelId: string): Promise<void> {
     const result = await this.channelBotModel.deleteMany({
       channelId: new Types.ObjectId(channelId),
@@ -242,9 +309,6 @@ export class ChannelBotService {
     }
   }
 
-  /**
-   * 序列化为前端响应格式
-   */
   toChannelBotResponse(
     binding: ChannelBotDocument,
     bot?: BotDocument,

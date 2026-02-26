@@ -99,12 +99,65 @@ export type BotEvent = (typeof BOT_EVENT)[keyof typeof BOT_EVENT];
 
 // ── Memory 配置常量 ──
 export const MEMORY_DEFAULTS = {
-  /** 短期窗口保留的最近消息数 */
   SHORT_TERM_WINDOW_SIZE: 15,
-  /** 触发 rolling summary 的消息阈值 */
   SUMMARY_TRIGGER_THRESHOLD: 30,
-  /** 每次纳入 summary 的最大消息数 */
   SUMMARY_BATCH_SIZE: 40,
-  /** rolling summary 最大字符长度 */
   SUMMARY_MAX_LENGTH: 2000,
 } as const;
+
+export const BOT_TRIGGER_TYPE = {
+  MENTION: 'mention',
+  SLASH_COMMAND: 'slash_command',
+  SCHEDULED: 'scheduled',
+  EVENT: 'event',
+} as const;
+
+export type BotTriggerTypeKey = keyof typeof BOT_TRIGGER_TYPE;
+export type BotTriggerTypeValue = (typeof BOT_TRIGGER_TYPE)[BotTriggerTypeKey];
+
+export const SLASH_PARAM_TYPE = {
+  STRING: 'string',
+  NUMBER: 'number',
+  BOOLEAN: 'boolean',
+  USER: 'user',
+} as const;
+
+export type SlashParamTypeKey = keyof typeof SLASH_PARAM_TYPE;
+export type SlashParamTypeValue = (typeof SLASH_PARAM_TYPE)[SlashParamTypeKey];
+
+export const SLASH_HANDLER_TYPE = {
+  PROMPT: 'prompt',
+  TOOL: 'tool',
+} as const;
+
+export type SlashHandlerTypeKey = keyof typeof SLASH_HANDLER_TYPE;
+export type SlashHandlerTypeValue =
+  (typeof SLASH_HANDLER_TYPE)[SlashHandlerTypeKey];
+
+export const SCHEDULE_ACTION_TYPE = {
+  PROMPT: 'prompt',
+  TEMPLATE_COMMAND: 'template_command',
+  STATIC_MESSAGE: 'static_message',
+} as const;
+
+export type ScheduleActionTypeKey = keyof typeof SCHEDULE_ACTION_TYPE;
+export type ScheduleActionTypeValue =
+  (typeof SCHEDULE_ACTION_TYPE)[ScheduleActionTypeKey];
+
+export const BOT_EVENT_SUB_TYPE = {
+  MEMBER_JOIN: 'member_join',
+  MEMBER_LEAVE: 'member_leave',
+} as const;
+
+export type BotEventSubTypeKey = keyof typeof BOT_EVENT_SUB_TYPE;
+export type BotEventSubTypeValue =
+  (typeof BOT_EVENT_SUB_TYPE)[BotEventSubTypeKey];
+
+export const EVENT_ACTION_TYPE = {
+  PROMPT: 'prompt',
+  STATIC_MESSAGE: 'static_message',
+} as const;
+
+export type EventActionTypeKey = keyof typeof EVENT_ACTION_TYPE;
+export type EventActionTypeValue =
+  (typeof EVENT_ACTION_TYPE)[EventActionTypeKey];

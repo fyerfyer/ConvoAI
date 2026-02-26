@@ -16,8 +16,8 @@ import {
   AgentContextMessage,
   BotExecutionContext,
   EXECUTION_MODE,
-  BOT_SCOPE,
   MEMORY_SCOPE,
+  BOT_TRIGGER_TYPE,
   LlmToolValue,
   MemoryScopeValue,
 } from '@discord-platform/shared';
@@ -49,7 +49,12 @@ export class BotOrchestratorService {
         : String(message.sender);
       if (sender?.isBot || this.botUserIds.has(senderId)) return;
 
-      if (!message.content?.includes('@')) return;
+      const content = message.content || '';
+      const isSlashCommand = content.startsWith('/');
+      const hasMention = content.includes('@');
+
+      // 如果既没有 @mention 也不是 slash command，跳过
+      if (!isSlashCommand && !hasMention) return;
 
       const channelId = String(message.channelId);
       const channel = await this.channelModel.findById(channelId);
@@ -57,10 +62,6 @@ export class BotOrchestratorService {
       const guildId = String(channel.guild);
 
       // Channel-first 策略
-      // 1. 加载该频道所有活跃的 Channel Bot 绑定
-      // 2. 加载该 Guild 的所有 Guild-scope Bot
-      // 3. 合并去重后匹配 @mention
-
       const [channelBindings, guildBots] = await Promise.all([
         this.channelBotService.findActiveBindingsByChannel(channelId),
         this.botService.findActiveBotsByGuild(guildId),
@@ -73,11 +74,10 @@ export class BotOrchestratorService {
         channelBindings.map((b) => String(b.botId)),
       );
 
-      // 分离 Guild-scope Bot
+      // 所有未通过 ChannelBot 绑定到本频道的 Bot（不限 scope）
+      // 不管 scope 是 GUILD 还是 CHANNEL，只要用户 @ 或使用 slash command 都应该能响应
       const guildScopeBots = guildBots.filter(
-        (bot) =>
-          bot.scope === BOT_SCOPE.GUILD &&
-          !channelBoundBotIds.has(bot._id.toString()),
+        (bot) => !channelBoundBotIds.has(bot._id.toString()),
       );
 
       const channelBotDefs = await Promise.all(
@@ -86,7 +86,6 @@ export class BotOrchestratorService {
             (b) => b._id.toString() === String(binding.botId),
           );
           if (bot) return { bot, binding };
-          // 如果 guildBots 中没有（可能不是 active），再单独查
           try {
             const loadedBot = await this.botService.findActiveBotById(
               String(binding.botId),
@@ -102,9 +101,27 @@ export class BotOrchestratorService {
           x !== null,
       );
 
-      const contentLower = message.content.toLowerCase();
+      // Slash Command 检测 
+      if (isSlashCommand) {
+        const parsed = this.parseSlashCommand(content);
+        if (parsed) {
+          await this.handleSlashCommand(
+            parsed,
+            message,
+            sender,
+            channelId,
+            guildId,
+            validChannelBots,
+            guildScopeBots,
+          );
+          return; // slash command 处理完毕，不再走 @mention 流程
+        }
+      }
 
-      // 匹配 Channel-bound bots
+      if (!hasMention) return;
+
+      const contentLower = content.toLowerCase();
+
       const mentionedChannelBots = validChannelBots.filter(({ bot }) => {
         const user = bot.userId as unknown as UserDocument;
         const botName = user?.name;
@@ -112,7 +129,6 @@ export class BotOrchestratorService {
         return contentLower.includes(`@${botName.toLowerCase()}`);
       });
 
-      // 匹配 Guild-scope bots
       const mentionedGuildBots = guildScopeBots.filter((bot) => {
         const user = bot.userId as unknown as UserDocument;
         const botName = user?.name;
@@ -145,7 +161,6 @@ export class BotOrchestratorService {
         this.botUserIds.add(botUser._id.toString());
         const cleanContent = this.stripMention(message.content, botName);
 
-        // 根据记忆范围获取记忆上下文
         const memoryScope = binding.memoryScope as MemoryScopeValue;
         const memory = await this.memoryService.getMemoryContext(
           bot._id.toString(),
@@ -154,11 +169,8 @@ export class BotOrchestratorService {
           memoryScope,
         );
 
-        // 构建带频道覆盖的上下文
         const contextMessages =
-          memoryScope === MEMORY_SCOPE.EPHEMERAL
-            ? [] // 临时模式不带历史上下文
-            : filteredContext;
+          memoryScope === MEMORY_SCOPE.EPHEMERAL ? [] : filteredContext;
 
         const executionCtx: BotExecutionContext = {
           botId: bot._id.toString(),
@@ -176,13 +188,12 @@ export class BotOrchestratorService {
           rawContent: message.content,
           context: contextMessages,
           executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
-          // Channel 覆写
           channelBotId: binding._id.toString(),
           overrideSystemPrompt: binding.overridePrompt,
           overrideTools: binding.overrideTools as LlmToolValue[] | undefined,
           memoryScope,
-          // 注入记忆上下文
           memory,
+          trigger: { type: BOT_TRIGGER_TYPE.MENTION },
         };
 
         this.agentRunner
@@ -195,7 +206,7 @@ export class BotOrchestratorService {
           );
       }
 
-      // Dispatch
+      // 分发 Guild-scope bots
       for (const bot of mentionedGuildBots) {
         const botUser = bot.userId as unknown as UserDocument;
         const botName = botUser.name;
@@ -207,7 +218,6 @@ export class BotOrchestratorService {
         this.botUserIds.add(botUser._id.toString());
         const cleanContent = this.stripMention(message.content, botName);
 
-        // Guild-scope bots 使用 channel 记忆范围（每个频道独立记忆）
         const memory = await this.memoryService.getMemoryContext(
           bot._id.toString(),
           channelId,
@@ -232,8 +242,8 @@ export class BotOrchestratorService {
           context: filteredContext,
           executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
           memoryScope: MEMORY_SCOPE.CHANNEL,
-          // 注入记忆上下文
           memory,
+          trigger: { type: BOT_TRIGGER_TYPE.MENTION },
         };
 
         this.agentRunner
@@ -249,6 +259,266 @@ export class BotOrchestratorService {
       const error = err instanceof Error ? err : new Error(String(err));
       this.logger.error(`BotOrchestrator error: ${error.message}`, error.stack);
     }
+  }
+
+  private parseSlashCommand(
+    content: string,
+  ): { name: string; args: Record<string, string>; raw: string } | null {
+    const trimmed = content.trim();
+    if (!trimmed.startsWith('/')) return null;
+
+    const parts = trimmed.slice(1).split(/\s+/);
+    const name = parts[0]?.toLowerCase();
+    if (!name || name.length === 0) return null;
+
+    const args: Record<string, string> = {};
+    const positionalArgs: string[] = [];
+
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      const colonIdx = part.indexOf(':');
+      if (colonIdx > 0) {
+        // 命名参数: key:value
+        const key = part.slice(0, colonIdx);
+        const value = part.slice(colonIdx + 1);
+        args[key] = value;
+      } else {
+        // 位置参数
+        positionalArgs.push(part);
+      }
+    }
+
+    // 将位置参数存为 _0, _1, ... 并将整体存为 _positional
+    positionalArgs.forEach((val, idx) => {
+      args[`_${idx}`] = val;
+    });
+    if (positionalArgs.length > 0) {
+      args['_positional'] = positionalArgs.join(' ');
+    }
+
+    return { name, args, raw: trimmed };
+  }
+
+  private async handleSlashCommand(
+    parsed: { name: string; args: Record<string, string>; raw: string },
+    message: MessageDocument,
+    sender: UserDocument,
+    channelId: string,
+    guildId: string,
+    validChannelBots: Array<{ bot: BotDocument; binding: ChannelBotDocument }>,
+    guildScopeBots: BotDocument[],
+  ): Promise<void> {
+    // 在 channel-bound bots 中查找匹配的命令
+    for (const { bot, binding } of validChannelBots) {
+      const matchedCmd = (bot.commands || []).find(
+        (cmd) => cmd.name === parsed.name,
+      );
+      if (!matchedCmd) continue;
+
+      const botUser = bot.userId as unknown as UserDocument;
+      const botName = botUser?.name || 'Bot';
+
+      this.logger.log(
+        `[SlashCmd] "/${parsed.name}" matched bot "${botName}" in channel ${channelId}`,
+      );
+
+      this.botUserIds.add(botUser._id.toString());
+
+      // 如果 handler 是 prompt 类型，渲染模板；否则使用位置参数作为内容（去掉 /command 前缀）
+      let content = parsed.args['_positional'] || parsed.raw;
+      if (
+        matchedCmd.handler?.type === 'prompt' &&
+        matchedCmd.handler.promptTemplate
+      ) {
+        content = this.renderPromptTemplate(
+          matchedCmd.handler.promptTemplate,
+          parsed.args,
+          matchedCmd.params || [],
+        );
+      }
+
+      const memoryScope = binding.memoryScope as MemoryScopeValue;
+      const memory = await this.memoryService.getMemoryContext(
+        bot._id.toString(),
+        channelId,
+        guildId,
+        memoryScope,
+      );
+
+      const context = await this.buildContext(channelId);
+      const filteredContext = context.filter(
+        (m) => m.messageId !== message._id.toString(),
+      );
+      const contextMessages =
+        memoryScope === MEMORY_SCOPE.EPHEMERAL ? [] : filteredContext;
+
+      const executionCtx: BotExecutionContext = {
+        botId: bot._id.toString(),
+        botUserId: botUser._id.toString(),
+        botName,
+        guildId,
+        channelId,
+        messageId: message._id.toString(),
+        author: {
+          id: sender._id.toString(),
+          name: sender.name,
+          avatar: sender.avatar,
+        },
+        content,
+        rawContent: message.content,
+        context: contextMessages,
+        executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
+        channelBotId: binding._id.toString(),
+        overrideSystemPrompt: binding.overridePrompt,
+        overrideTools:
+          matchedCmd.handler?.type === 'tool' && matchedCmd.handler.toolId
+            ? [matchedCmd.handler.toolId as LlmToolValue]
+            : (binding.overrideTools as LlmToolValue[] | undefined),
+        memoryScope,
+        memory,
+        trigger: {
+          type: BOT_TRIGGER_TYPE.SLASH_COMMAND,
+          slashCommand: {
+            name: parsed.name,
+            args: parsed.args,
+            raw: parsed.raw,
+          },
+        },
+      };
+
+      this.agentRunner
+        .dispatch(bot, executionCtx)
+        .catch((err) =>
+          this.logger.error(
+            `Failed to dispatch slash cmd "/${parsed.name}" for bot "${botName}": ${err.message}`,
+            err.stack,
+          ),
+        );
+      return; // 一个 slash command 只匹配第一个 bot
+    }
+
+    // 在 guild-scope bots 中查找匹配的命令
+    for (const bot of guildScopeBots) {
+      const matchedCmd = (bot.commands || []).find(
+        (cmd) => cmd.name === parsed.name,
+      );
+      if (!matchedCmd) continue;
+
+      const botUser = bot.userId as unknown as UserDocument;
+      const botName = botUser?.name || 'Bot';
+
+      this.logger.log(
+        `[SlashCmd] "/${parsed.name}" matched guild bot "${botName}" in channel ${channelId}`,
+      );
+
+      this.botUserIds.add(botUser._id.toString());
+
+      // 如果 handler 是 prompt 类型，渲染模板；否则使用位置参数作为内容（去掉 /command 前缀）
+      let content = parsed.args['_positional'] || parsed.raw;
+      if (
+        matchedCmd.handler?.type === 'prompt' &&
+        matchedCmd.handler.promptTemplate
+      ) {
+        content = this.renderPromptTemplate(
+          matchedCmd.handler.promptTemplate,
+          parsed.args,
+          matchedCmd.params || [],
+        );
+      }
+
+      const memory = await this.memoryService.getMemoryContext(
+        bot._id.toString(),
+        channelId,
+        guildId,
+        MEMORY_SCOPE.CHANNEL,
+      );
+
+      const context = await this.buildContext(channelId);
+      const filteredContext = context.filter(
+        (m) => m.messageId !== message._id.toString(),
+      );
+
+      const executionCtx: BotExecutionContext = {
+        botId: bot._id.toString(),
+        botUserId: botUser._id.toString(),
+        botName,
+        guildId,
+        channelId,
+        messageId: message._id.toString(),
+        author: {
+          id: sender._id.toString(),
+          name: sender.name,
+          avatar: sender.avatar,
+        },
+        content,
+        rawContent: message.content,
+        context: filteredContext,
+        executionMode: bot.executionMode || EXECUTION_MODE.WEBHOOK,
+        memoryScope: MEMORY_SCOPE.CHANNEL,
+        memory,
+        trigger: {
+          type: BOT_TRIGGER_TYPE.SLASH_COMMAND,
+          slashCommand: {
+            name: parsed.name,
+            args: parsed.args,
+            raw: parsed.raw,
+          },
+        },
+      };
+
+      this.agentRunner
+        .dispatch(bot, executionCtx)
+        .catch((err) =>
+          this.logger.error(
+            `Failed to dispatch slash cmd "/${parsed.name}" for guild bot "${botName}": ${err.message}`,
+            err.stack,
+          ),
+        );
+      return;
+    }
+
+    // 没有匹配的 slash command，忽略
+    this.logger.debug(
+      `[SlashCmd] No bot matched command "/${parsed.name}" in channel ${channelId}`,
+    );
+  }
+
+  private renderPromptTemplate(
+    template: string,
+    args: Record<string, string>,
+    params: Array<{ name: string }>,
+  ): string {
+    let result = template;
+    // 替换命名参数
+    for (const [key, value] of Object.entries(args)) {
+      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+    }
+    // 替换按定义顺序的位置参数
+    params.forEach((param, idx) => {
+      let positionalValue: string | undefined;
+      if (idx === params.length - 1) {
+        // 最后一个参数收集从当前索引开始的所有剩余位置参数
+        const remaining: string[] = [];
+        for (let i = idx; ; i++) {
+          if (args[`_${i}`] !== undefined) {
+            remaining.push(args[`_${i}`]);
+          } else {
+            break;
+          }
+        }
+        positionalValue =
+          remaining.length > 0 ? remaining.join(' ') : undefined;
+      } else {
+        positionalValue = args[`_${idx}`];
+      }
+      if (positionalValue) {
+        result = result.replace(
+          new RegExp(`\\{${param.name}\\}`, 'g'),
+          positionalValue,
+        );
+      }
+    });
+    return result;
   }
 
   async sendBotMessage(

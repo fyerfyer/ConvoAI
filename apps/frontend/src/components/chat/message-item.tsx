@@ -1,7 +1,16 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download, FileIcon, Play, Bot, Reply, Mic } from 'lucide-react';
+import {
+  Download,
+  FileIcon,
+  Play,
+  Bot,
+  Reply,
+  Mic,
+  Terminal,
+  Sparkles,
+} from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import EmbedRenderer from './embed-renderer';
 import MessageContent from './message-content';
@@ -43,6 +52,20 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+/** Detect if the message content is a slash command invocation */
+function parseSlashCommand(
+  content: string,
+): { command: string; args: string } | null {
+  const match = content.match(/^\/([a-z0-9_-]+)(\s.*)?$/i);
+  if (!match) return null;
+  return { command: match[1], args: (match[2] || '').trim() };
+}
+
+/** Detect if the message is a bot error/warning */
+function isBotWarning(content: string): boolean {
+  return content.startsWith('⚠️');
+}
+
 export default function MessageItem({
   message,
   currentUserId,
@@ -54,6 +77,15 @@ export default function MessageItem({
   const isOwnMessage = !!currentUserId && message.author.id === currentUserId;
   const authorDisplayName = message.author.nickname || message.author.name;
   const isVoiceMessage = message.type === MESSAGE_TYPE.VOICE;
+  const isBot = message.author.isBot;
+  const slashCmd = useMemo(
+    () => (!isBot ? parseSlashCommand(message.content) : null),
+    [message.content, isBot],
+  );
+  const isBotError = useMemo(
+    () => (isBot ? isBotWarning(message.content) : false),
+    [message.content, isBot],
+  );
 
   // Handle system messages
   if (message.type === MESSAGE_TYPE.SYSTEM) {
@@ -63,32 +95,39 @@ export default function MessageItem({
   return (
     <div
       className={cn(
-        'group flex items-start py-2 pl-4 pr-12 hover:bg-gray-800/30 mt-4 first:mt-0',
-        isOwnMessage &&
-          'bg-indigo-500/10 hover:bg-indigo-500/15 border-l-2 border-indigo-400',
-        isVoiceMessage && 'bg-green-500/5',
+        'group relative flex items-start py-2 pl-4 pr-12 hover:bg-gray-800/30 mt-0.5 first:mt-0 transition-colors',
+        // Own message - subtle indigo highlight
+        isOwnMessage && !slashCmd && 'hover:bg-indigo-500/8',
+        // Bot message - subtle blue highlight with left accent
+        isBot &&
+          !isBotError &&
+          'bg-[#2b2d42]/20 hover:bg-[#2b2d42]/30 border-l-2 border-blue-500/40',
+        // Bot error message - amber accent
+        isBotError &&
+          'bg-amber-500/5 hover:bg-amber-500/10 border-l-2 border-amber-500/50',
+        // Slash command message - emerald accent
+        slashCmd &&
+          'bg-emerald-500/5 hover:bg-emerald-500/10 border-l-2 border-emerald-400/50',
+        // Voice message
+        isVoiceMessage && !isBot && 'bg-green-500/5',
       )}
     >
-      <Avatar className="h-10 w-10 mr-4 shrink-0 mt-0.5">
+      <Avatar className="h-10 w-10 mr-4 shrink-0 mt-0.5 ring-2 ring-transparent group-hover:ring-gray-600/50 transition-all">
         <AvatarImage src={message.author.avatar || undefined} />
         <AvatarFallback
           className={cn(
             'text-white text-sm',
-            message.author.isBot ? 'bg-blue-600' : 'bg-indigo-500',
+            isBot ? 'bg-blue-600' : 'bg-indigo-500',
           )}
         >
-          {message.author.isBot ? (
-            <Bot className="h-5 w-5" />
-          ) : (
-            getInitials(authorDisplayName)
-          )}
+          {isBot ? <Bot className="h-5 w-5" /> : getInitials(authorDisplayName)}
         </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
         {/* Reply context */}
         {message.replyTo && (
-          <div className="flex items-center gap-1.5 mb-1 text-xs text-gray-400">
-            <Reply className="h-3 w-3 rotate-180" />
+          <div className="flex items-center gap-1.5 mb-1 text-xs text-gray-400 bg-gray-800/30 rounded px-2 py-0.5 w-fit">
+            <Reply className="h-3 w-3 rotate-180 text-gray-500" />
             <span className="font-medium text-gray-300">
               {message.replyTo.author?.name || 'Unknown'}
             </span>
@@ -98,21 +137,22 @@ export default function MessageItem({
           </div>
         )}
 
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
           <span
             className={cn(
-              'text-sm font-semibold',
-              message.author.isBot
+              'text-sm font-semibold cursor-pointer hover:underline',
+              isBot
                 ? 'text-blue-400'
                 : isOwnMessage
-                  ? 'text-indigo-200'
+                  ? 'text-indigo-300'
                   : 'text-white',
             )}
           >
             {authorDisplayName}
           </span>
-          {message.author.isBot && (
-            <span className="rounded bg-blue-500 px-1 py-0.5 text-[10px] font-bold text-white uppercase">
+          {isBot && (
+            <span className="inline-flex items-center gap-0.5 rounded bg-blue-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">
+              <Sparkles className="h-2.5 w-2.5" />
               Bot
             </span>
           )}
@@ -122,11 +162,43 @@ export default function MessageItem({
               Voice
             </span>
           )}
-          <span className="text-[11px] text-gray-500">{timestamp}</span>
+          {slashCmd && (
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+              <Terminal className="h-2.5 w-2.5" />/{slashCmd.command}
+            </span>
+          )}
+          <span className="text-[11px] text-gray-500 select-none">
+            {timestamp}
+          </span>
         </div>
 
-        {/* Message content - use markdown renderer */}
-        {message.content && <MessageContent content={message.content} />}
+        {/* Slash command display */}
+        {slashCmd ? (
+          <div className="mt-1">
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-gray-800/80 border border-gray-700/50 px-2.5 py-1">
+              <Terminal className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="font-mono text-sm text-emerald-300">
+                /{slashCmd.command}
+              </span>
+              {slashCmd.args && (
+                <span className="text-sm text-gray-300 ml-0.5">
+                  {slashCmd.args}
+                </span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Message content - use markdown renderer */}
+            {message.content && (
+              <MessageContent
+                content={message.content}
+                isBot={isBot}
+                isError={isBotError}
+              />
+            )}
+          </>
+        )}
 
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (

@@ -8,6 +8,8 @@ import {
   BotListResponse,
   ChannelBotResponse,
   ChannelBotListResponse,
+  ChannelSlashCommandsResponse,
+  ChannelSlashCommandInfo,
   CreateBotDTO,
   UpdateBotDTO,
   CreateChannelBotDTO,
@@ -38,6 +40,29 @@ export const channelBotKeys = {
     [...channelBotKeys.all, 'channel', channelId] as const,
   byBot: (botId: string) => [...channelBotKeys.all, 'bot', botId] as const,
 };
+
+export const channelCommandKeys = {
+  all: ['channel-commands'] as const,
+  byChannel: (channelId: string) =>
+    [...channelCommandKeys.all, channelId] as const,
+};
+
+// Get available slash commands for a channel (for autocomplete)
+export function useChannelCommands(channelId: string | undefined) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  return useQuery({
+    queryKey: channelCommandKeys.byChannel(channelId ?? ''),
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<ChannelSlashCommandsResponse>>(
+        `/bots/channel/${channelId}/commands`,
+      );
+      return (response.data?.commands ?? []) as ChannelSlashCommandInfo[];
+    },
+    enabled: isAuthenticated && !!channelId,
+    staleTime: 30 * 1000,
+  });
+}
 
 // List bots in a guild
 export function useBots(guildId: string | undefined) {
@@ -88,6 +113,12 @@ export function useCreateBot() {
       queryClient.invalidateQueries({
         queryKey: botKeys.byGuild(variables.guildId),
       });
+      queryClient.invalidateQueries({
+        queryKey: channelCommandKeys.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.all,
+      });
       toast({
         title: 'Bot Created',
         description: 'Your bot has been created successfully.',
@@ -130,6 +161,14 @@ export function useUpdateBot() {
       queryClient.invalidateQueries({
         queryKey: botKeys.detail(variables.botId),
       });
+      // Invalidate all channel command & channel bot caches so slash changes
+      // take effect immediately without a page refresh
+      queryClient.invalidateQueries({
+        queryKey: channelCommandKeys.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.all,
+      });
       toast({
         title: 'Bot Updated',
         description: 'Bot settings have been saved.',
@@ -162,6 +201,12 @@ export function useDeleteBot() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: botKeys.byGuild(variables.guildId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelCommandKeys.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: channelBotKeys.all,
       });
       toast({
         title: 'Bot Deleted',

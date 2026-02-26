@@ -28,6 +28,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useUpdateBot, useTemplates } from '@/hooks/use-bot';
+import { useChannels } from '@/hooks/use-channel';
 import {
   BotResponse,
   BOT_STATUS,
@@ -35,8 +36,12 @@ import {
   LLM_PROVIDER,
   LLM_TOOL,
   TemplateInfo,
+  type SlashCommand,
+  type BotSchedule,
+  type BotEventSubscription,
 } from '@discord-platform/shared';
 import { cn } from '@/lib/utils';
+import TriggerConfigSection from './trigger-config-section';
 
 interface EditBotDialogProps {
   open: boolean;
@@ -135,6 +140,14 @@ export default function EditBotDialog({
   const [llmCustomBaseUrl, setLlmCustomBaseUrl] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
 
+  // Trigger config
+  const [commands, setCommands] = useState<SlashCommand[]>([]);
+  const [schedules, setSchedules] = useState<BotSchedule[]>([]);
+  const [eventSubscriptions, setEventSubscriptions] = useState<
+    BotEventSubscription[]
+  >([]);
+
+  const { data: channels = [] } = useChannels(guildId);
   const updateBot = useUpdateBot();
   const { data: templates = [] } = useTemplates();
 
@@ -173,6 +186,13 @@ export default function EditBotDialog({
     }
     setLlmApiKey(''); // never pre-filled
     setShowApiKey(false);
+
+    // Trigger config
+    setCommands((bot.commands as SlashCommand[]) ?? []);
+    setSchedules((bot.schedules as BotSchedule[]) ?? []);
+    setEventSubscriptions(
+      (bot.eventSubscriptions as BotEventSubscription[]) ?? [],
+    );
   }, [bot]);
 
   const canSubmit = useMemo(() => {
@@ -214,6 +234,11 @@ export default function EditBotDialog({
           llm.customBaseUrl = llmCustomBaseUrl;
         base.llmConfig = llm;
       }
+
+      // Trigger config
+      base.commands = commands;
+      base.schedules = schedules;
+      base.eventSubscriptions = eventSubscriptions;
 
       await updateBot.mutateAsync({
         botId: bot.id,
@@ -870,6 +895,17 @@ export default function EditBotDialog({
               maxLength={500}
             />
           </div>
+
+          {/* ── Triggers & Automation ── */}
+          <TriggerConfigSection
+            commands={commands}
+            onCommandsChange={setCommands}
+            schedules={schedules}
+            onSchedulesChange={setSchedules}
+            eventSubscriptions={eventSubscriptions}
+            onEventSubscriptionsChange={setEventSubscriptions}
+            channels={channels}
+          />
 
           {/* ── Status (all modes) ── */}
           <div>

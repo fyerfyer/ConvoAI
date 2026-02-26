@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HttpModule } from '@nestjs/axios';
+import { ScheduleModule } from '@nestjs/schedule';
 import { Bot, botSchema } from './schemas/bot.schema';
 import { ChannelBot, channelBotSchema } from './schemas/channel-bot.schema';
 import { User, userSchema } from '../user/schemas/user.schema';
@@ -11,6 +12,8 @@ import { BotService } from './bot.service';
 import { ChannelBotService } from './channel-bot.service';
 import { BotController } from './bot.controller';
 import { BotOrchestratorService } from './bot-orchestrator.service';
+import { BotSchedulerService } from './bot-scheduler.service';
+import { BotEventService } from './bot-event.service';
 import { WebhookController } from './webhook.controller';
 import { WebhookGuard } from './webhook.guard';
 import { ChatModule } from '../chat/chat.module';
@@ -43,6 +46,7 @@ import { BotStreamProducer } from './bot-stream.producer';
       timeout: 120_000,
       maxRedirects: 3,
     }),
+    ScheduleModule.forRoot(),
     ChatModule,
     MemoryModule,
   ],
@@ -50,6 +54,8 @@ import { BotStreamProducer } from './bot-stream.producer';
     BotService,
     ChannelBotService,
     BotOrchestratorService,
+    BotSchedulerService,
+    BotEventService,
     WebhookGuard,
     EncryptionService,
 

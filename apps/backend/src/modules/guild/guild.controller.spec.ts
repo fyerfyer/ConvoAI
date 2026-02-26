@@ -4,15 +4,14 @@ import { GuildService } from './guild.service';
 import { ChannelService } from '../channel/channel.service';
 import { MemberService } from '../member/member.service';
 import { ConfigModule } from '@nestjs/config';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
+import { MongooseModule } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
-import { Guild, GuildDocument, guildSchema } from './schemas/guild.schema';
+import { Guild, guildSchema } from './schemas/guild.schema';
 import { Channel, channelSchema } from '../channel/schemas/channel.schema';
 import { Member, memberSchema } from '../member/schemas/member.schema';
 import { TestDatabaseHelper, TestRedisHelper } from '../../test/helpers';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
-import { Model } from 'mongoose';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 

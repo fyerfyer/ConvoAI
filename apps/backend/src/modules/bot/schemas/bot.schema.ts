@@ -20,6 +20,11 @@ import {
   TemplateIdValue,
   LlmProviderValue,
   LlmToolValue,
+  SlashParamTypeValue,
+  SlashHandlerTypeValue,
+  ScheduleActionTypeValue,
+  BotEventSubTypeValue,
+  EventActionTypeValue,
 } from '@discord-platform/shared';
 
 export type BotDocument = HydratedDocument<Bot>;
@@ -55,6 +60,140 @@ export class LlmConfigEmbedded {
 
 export const llmConfigEmbeddedSchema =
   SchemaFactory.createForClass(LlmConfigEmbedded);
+
+// ── Slash Command 内嵌 Schema ──
+@Schema({ _id: false })
+export class SlashCommandParamEmbedded {
+  @Prop({ type: String, required: true })
+  name: string;
+
+  @Prop({ type: String, default: '' })
+  description: string;
+
+  @Prop({ type: String, default: 'string' })
+  type: SlashParamTypeValue;
+
+  @Prop({ type: Boolean, default: false })
+  required: boolean;
+}
+
+export const slashCommandParamEmbeddedSchema = SchemaFactory.createForClass(
+  SlashCommandParamEmbedded,
+);
+
+@Schema({ _id: false })
+export class SlashCommandHandlerEmbedded {
+  @Prop({ type: String, required: true })
+  type: SlashHandlerTypeValue;
+
+  @Prop({ type: String })
+  promptTemplate?: string;
+
+  @Prop({ type: String })
+  toolId?: string;
+}
+
+export const slashCommandHandlerEmbeddedSchema = SchemaFactory.createForClass(
+  SlashCommandHandlerEmbedded,
+);
+
+@Schema({ _id: false })
+export class SlashCommandEmbedded {
+  @Prop({ type: String, required: true })
+  name: string;
+
+  @Prop({ type: String, default: '' })
+  description: string;
+
+  @Prop({ type: [slashCommandParamEmbeddedSchema], default: [] })
+  params: SlashCommandParamEmbedded[];
+
+  @Prop({ type: slashCommandHandlerEmbeddedSchema, required: true })
+  handler: SlashCommandHandlerEmbedded;
+}
+
+export const slashCommandEmbeddedSchema =
+  SchemaFactory.createForClass(SlashCommandEmbedded);
+
+@Schema({ _id: false })
+export class ScheduleActionEmbedded {
+  @Prop({ type: String, required: true })
+  type: ScheduleActionTypeValue;
+
+  @Prop({ type: String })
+  prompt?: string;
+
+  @Prop({ type: String })
+  command?: string;
+
+  @Prop({ type: String })
+  message?: string;
+}
+
+export const scheduleActionEmbeddedSchema = SchemaFactory.createForClass(
+  ScheduleActionEmbedded,
+);
+
+@Schema({ _id: false })
+export class BotScheduleEmbedded {
+  @Prop({ type: String, required: true })
+  id: string;
+
+  @Prop({ type: String, required: true })
+  cron: string;
+
+  @Prop({ type: String, required: true })
+  channelId: string;
+
+  @Prop({ type: scheduleActionEmbeddedSchema, required: true })
+  action: ScheduleActionEmbedded;
+
+  @Prop({ type: Boolean, default: true })
+  enabled: boolean;
+
+  @Prop({ type: String })
+  timezone?: string;
+
+  @Prop({ type: String })
+  description?: string;
+}
+
+export const botScheduleEmbeddedSchema =
+  SchemaFactory.createForClass(BotScheduleEmbedded);
+
+@Schema({ _id: false })
+export class EventActionEmbedded {
+  @Prop({ type: String, required: true })
+  type: EventActionTypeValue;
+
+  @Prop({ type: String })
+  prompt?: string;
+
+  @Prop({ type: String })
+  message?: string;
+}
+
+export const eventActionEmbeddedSchema =
+  SchemaFactory.createForClass(EventActionEmbedded);
+
+@Schema({ _id: false })
+export class BotEventSubscriptionEmbedded {
+  @Prop({ type: String, required: true })
+  eventType: BotEventSubTypeValue;
+
+  @Prop({ type: String, required: true })
+  channelId: string;
+
+  @Prop({ type: eventActionEmbeddedSchema, required: true })
+  action: EventActionEmbedded;
+
+  @Prop({ type: Boolean, default: true })
+  enabled: boolean;
+}
+
+export const botEventSubscriptionEmbeddedSchema = SchemaFactory.createForClass(
+  BotEventSubscriptionEmbedded,
+);
 
 @Schema({ timestamps: true })
 export class Bot {
@@ -115,6 +254,15 @@ export class Bot {
     default: BOT_STATUS.ACTIVE,
   })
   status: BotStatusValue;
+
+  @Prop({ type: [slashCommandEmbeddedSchema], default: [] })
+  commands: SlashCommandEmbedded[];
+
+  @Prop({ type: [botScheduleEmbeddedSchema], default: [] })
+  schedules: BotScheduleEmbedded[];
+
+  @Prop({ type: [botEventSubscriptionEmbeddedSchema], default: [] })
+  eventSubscriptions: BotEventSubscriptionEmbedded[];
 
   createdAt?: Date;
   updatedAt?: Date;

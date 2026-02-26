@@ -2,6 +2,11 @@ import { ChannelValue } from '../constants/channel.contant';
 import { AttachmentValue } from '../constants/chat.constant';
 import { MessageTypeValue } from '../constants/chat.constant';
 import { IUserPublic, IUserSummary } from './user.interface';
+import {
+  SlashCommand,
+  BotSchedule,
+  BotEventSubscription,
+} from './bot.interface';
 
 export interface AuthResponse {
   user: IUserPublic;
@@ -191,6 +196,10 @@ export interface BotResponse {
     customBaseUrl?: string;
     // apiKey 永远不返回给前端
   };
+  // 响应触发器
+  commands?: SlashCommand[];
+  schedules?: BotSchedule[];
+  eventSubscriptions?: BotEventSubscription[];
   channelBindingCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -244,4 +253,21 @@ export interface VoiceParticipant {
 export interface VoiceStateResponse {
   channelId: string;
   participants: VoiceParticipant[];
+}
+
+export interface ChannelSlashCommandInfo {
+  name: string;
+  description: string;
+  botName: string;
+  botId: string;
+  params: Array<{
+    name: string;
+    description: string;
+    type: string;
+    required: boolean;
+  }>;
+}
+
+export interface ChannelSlashCommandsResponse {
+  commands: ChannelSlashCommandInfo[];
 }

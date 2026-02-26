@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 
-import { BotExecutionContext, MemoryContext } from '@discord-platform/shared';
+import {
+  BotExecutionContext,
+  MemoryContext,
+  BOT_TRIGGER_TYPE,
+} from '@discord-platform/shared';
 import { LlmConfigEmbedded } from '../schemas/bot.schema';
 import { AppLogger } from '../../../common/configs/logger/logger.service';
 
@@ -70,38 +74,37 @@ export class ContextBuilder {
   ): string {
     const sections: string[] = [];
 
-    // ── Base Identity ──
     sections.push(this.buildIdentitySection(ctx));
 
-    // ── User-defined System Prompt ──
     const userPrompt = ctx.overrideSystemPrompt ?? config.systemPrompt;
     if (userPrompt && userPrompt !== 'You are a helpful assistant.') {
       sections.push(`## Your Role & Instructions\n${userPrompt}`);
     }
 
-    // ── Tool Usage Guide ──
     const toolNames = ctx.overrideTools ?? config.tools;
     if (toolNames && toolNames.length > 0) {
       sections.push(this.buildToolGuide(toolNames));
     }
 
-    // ── Context Info ──
+    // Slash 命令上下文
+    if (
+      ctx.trigger?.type === BOT_TRIGGER_TYPE.SLASH_COMMAND &&
+      ctx.trigger.slashCommand
+    ) {
+      sections.push(this.buildSlashCommandContext(ctx.trigger.slashCommand));
+    }
+
     sections.push(this.buildContextInfo(ctx));
 
-    // ── Memory Info ──
     if (ctx.memory && ctx.memory.summarizedMessageCount > 0) {
       sections.push(this.buildMemoryInfo(ctx.memory));
     }
 
-    // ── Behavioral Rules ──
     sections.push(this.buildBehavioralRules());
 
     return sections.join('\n\n');
   }
 
-  /**
-   * 构建 Bot 身份描述
-   */
   private buildIdentitySection(ctx: BotExecutionContext): string {
     return (
       `## Identity\n` +
@@ -110,9 +113,6 @@ export class ContextBuilder {
     );
   }
 
-  /**
-   * 构建工具使用指导
-   */
   private buildToolGuide(toolNames: string[]): string {
     const toolDescriptions: Record<string, string> = {
       'web-search':
@@ -138,19 +138,50 @@ export class ContextBuilder {
 
     return (
       `## Available Tools\n` +
-      `You have access to the following tools. Use them proactively when they would help answer the user's question:\n` +
+      `You have access to the following tools. You MUST use them proactively when they can help answer the user's question:\n` +
       `${guides}\n\n` +
-      `Guidelines:\n` +
-      `- Use tools when the user's question requires information you don't have\n` +
-      `- Prefer tools over guessing when factual/real-time information is needed\n` +
+      `Tool Usage Rules:\n` +
+      `- ALWAYS use the appropriate tool when the user's question requires real-time data, current information, or facts you may not know\n` +
+      `- For web search: use it for ANY question about current events, facts, how-to, recipes, news, etc.\n` +
+      `- Do NOT say "the tool is unavailable" or refuse to use tools — call the tool function directly\n` +
       `- You may call multiple tools in sequence if needed\n` +
-      `- Always explain what you found from tools in a natural, conversational way`
+      `- After receiving tool results, present the information in a natural, conversational way\n` +
+      `- If a tool returns limited results, still present what was found and supplement with your knowledge`
     );
   }
 
-  /**
-   * 构建环境上下文信息
-   */
+  private buildSlashCommandContext(slashCommand: {
+    name: string;
+    args: Record<string, string>;
+    raw: string;
+  }): string {
+    const positional = slashCommand.args['_positional'] || '';
+    const namedArgs = Object.entries(slashCommand.args)
+      .filter(([key]) => !key.startsWith('_'))
+      .map(([key, value]) => `  - ${key}: ${value}`)
+      .join('\n');
+
+    const lines = [
+      `## Slash Command Triggered`,
+      `The user invoked the slash command \`/${slashCommand.name}\`.`,
+    ];
+    if (positional) {
+      lines.push(`Full arguments: "${positional}"`);
+    }
+    if (namedArgs) {
+      lines.push(`Named arguments:\n${namedArgs}`);
+    }
+    lines.push(
+      `Execute the /${slashCommand.name} operation directly using the provided arguments. Do NOT ask the user to repeat or re-provide information.`,
+    );
+    lines.push(
+      `IMPORTANT: If tools are available, you MUST use the appropriate tool(s) to fulfill this command. ` +
+        `Do not rely on your training data alone when a tool can provide real-time or accurate information. ` +
+        `After receiving tool results, synthesize and present the information clearly to the user.`,
+    );
+    return lines.join('\n');
+  }
+
   private buildContextInfo(ctx: BotExecutionContext): string {
     const lines = [
       `## Current Context`,
@@ -162,9 +193,6 @@ export class ContextBuilder {
     return lines.join('\n');
   }
 
-  /**
-   * 构建记忆信息提示
-   */
   private buildMemoryInfo(memory: MemoryContext): string {
     return (
       `## Memory\n` +
@@ -175,9 +203,6 @@ export class ContextBuilder {
     );
   }
 
-  /**
-   * 构建行为准则
-   */
   private buildBehavioralRules(): string {
     return (
       `## Behavioral Guidelines\n` +

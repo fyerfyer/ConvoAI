@@ -200,6 +200,7 @@ export default function ChatArea({
 
       {/* Message Input */}
       <MessageInput
+        channelId={channelId}
         channelName={channelName}
         guildId={guildId}
         onSendMessage={handleSendMessage}

@@ -52,7 +52,6 @@ export class MemberController {
     };
   }
 
-  // ─── Get my permissions in this guild ──────────────────────
   @Get('@me/permissions')
   async getMyPermissions(
     @Param('guildId') guildId: string,

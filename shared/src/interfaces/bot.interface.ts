@@ -5,6 +5,12 @@ import {
   TemplateIdValue,
   ExecutionModeValue,
   MemoryScopeValue,
+  SlashParamTypeValue,
+  SlashHandlerTypeValue,
+  ScheduleActionTypeValue,
+  BotEventSubTypeValue,
+  EventActionTypeValue,
+  BotTriggerTypeValue,
 } from '../constants/bot.constant';
 
 export interface AgentContextMessage {
@@ -170,9 +176,9 @@ export interface BotExecutionContext {
   overrideTools?: LlmToolValue[];
   memoryScope?: MemoryScopeValue;
   memory?: MemoryContext;
+  // 触发上下文（slash command / schedule / event）
+  trigger?: TriggerContext;
 }
-
-// ── Channel Bot Binding（频道级 Bot 实例配置）──
 
 export interface ChannelBotPolicy {
   canSummarize: boolean;
@@ -189,4 +195,76 @@ export interface ChannelBotConfig {
   overrideTools?: LlmToolValue[];
   memoryScope: MemoryScopeValue;
   policy: ChannelBotPolicy;
+}
+
+export interface SlashCommandParam {
+  name: string;
+  description: string;
+  type: SlashParamTypeValue;
+  required: boolean;
+}
+
+export interface SlashCommandHandler {
+  type: SlashHandlerTypeValue;
+  promptTemplate?: string;
+  toolId?: string; // 绑定到某个 LLM tool
+}
+
+export interface SlashCommand {
+  name: string; // 命令名（不含 / 前缀）
+  description: string;
+  params: SlashCommandParam[];
+  handler: SlashCommandHandler;
+}
+
+export interface ScheduleAction {
+  type: ScheduleActionTypeValue;
+  prompt?: string; // type='prompt' 时使用
+  command?: string; // type='template_command' 时使用
+  message?: string; // type='static_message' 时使用
+}
+
+export interface BotSchedule {
+  id: string;
+  cron: string;
+  channelId: string;
+  action: ScheduleAction;
+  enabled: boolean;
+  timezone?: string;
+  description?: string;
+}
+
+export interface EventAction {
+  type: EventActionTypeValue;
+  prompt?: string; // type='prompt' 时使用
+  message?: string; // type='static_message' 时, 支持 {user}/{guild} 变量
+}
+
+export interface BotEventSubscription {
+  eventType: BotEventSubTypeValue;
+  channelId: string; // 触发时发送到哪个频道
+  action: EventAction;
+  enabled: boolean;
+}
+
+export interface TriggerContext {
+  type: BotTriggerTypeValue;
+  // slash_command 触发时
+  slashCommand?: {
+    name: string;
+    args: Record<string, string>;
+    raw: string;
+  };
+  // scheduled 触发时
+  schedule?: {
+    scheduleId: string;
+    cron: string;
+  };
+  // event 触发时
+  event?: {
+    eventType: BotEventSubTypeValue;
+    userId: string;
+    userName: string;
+    userAvatar?: string | null;
+  };
 }

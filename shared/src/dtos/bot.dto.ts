@@ -15,12 +15,90 @@ const llmProviderEnum = z.enum(['openai', 'deepseek', 'google', 'custom']);
 const llmToolEnum = z.enum([
   'web-search',
   'code-execution',
-  'image-generation',
   'summarize-user',
   'channel-history',
   'guild-info',
   'member-list',
 ]);
+
+// ── Slash Command Schemas ──
+const slashParamTypeEnum = z.enum(['string', 'number', 'boolean', 'user']);
+const slashHandlerTypeEnum = z.enum(['prompt', 'tool']);
+
+const slashCommandParamSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(
+      /^[a-z0-9_-]+$/,
+      'Param name must be lowercase alphanumeric with - or _',
+    ),
+  description: z.string().max(100).default(''),
+  type: slashParamTypeEnum.default('string'),
+  required: z.boolean().default(false),
+});
+
+const slashCommandHandlerSchema = z.object({
+  type: slashHandlerTypeEnum,
+  promptTemplate: z.string().max(2000).optional(),
+  toolId: z.string().optional(),
+});
+
+const slashCommandSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(
+      /^[a-z0-9_-]+$/,
+      'Command name must be lowercase alphanumeric with - or _',
+    ),
+  description: z.string().max(100).default(''),
+  params: z.array(slashCommandParamSchema).max(10).default([]),
+  handler: slashCommandHandlerSchema,
+});
+
+// ── Schedule Schemas ──
+const scheduleActionTypeEnum = z.enum([
+  'prompt',
+  'template_command',
+  'static_message',
+]);
+
+const scheduleActionSchema = z.object({
+  type: scheduleActionTypeEnum,
+  prompt: z.string().max(2000).optional(),
+  command: z.string().max(500).optional(),
+  message: z.string().max(2000).optional(),
+});
+
+const botScheduleSchema = z.object({
+  id: z.string().min(1),
+  cron: z.string().min(9).max(100), // e.g. "0 9 * * *"
+  channelId: z.string().min(1),
+  action: scheduleActionSchema,
+  enabled: z.boolean().default(true),
+  timezone: z.string().max(50).optional(),
+  description: z.string().max(200).optional(),
+});
+
+// ── Event Subscription Schemas ──
+const botEventSubTypeEnum = z.enum(['member_join', 'member_leave']);
+const eventActionTypeEnum = z.enum(['prompt', 'static_message']);
+
+const eventActionSchema = z.object({
+  type: eventActionTypeEnum,
+  prompt: z.string().max(2000).optional(),
+  message: z.string().max(2000).optional(),
+});
+
+const botEventSubscriptionSchema = z.object({
+  eventType: botEventSubTypeEnum,
+  channelId: z.string().min(1),
+  action: eventActionSchema,
+  enabled: z.boolean().default(true),
+});
 
 // ── LLM 配置 Schema ──
 const llmConfigSchema = z.object({
@@ -91,6 +169,9 @@ export const createBotDTOSchema = z
     // Bot 作用域: 'guild' 全局监听, 'channel' 需要显式绑定频道
     scope: botScopeEnum.default('channel'),
 
+    // Channel-scope 时，创建后自动绑定的频道 ID
+    channelId: z.string().optional(),
+
     // 执行模式 (默认 webhook 保持向后兼容)
     executionMode: executionModeEnum.default('webhook'),
 
@@ -103,6 +184,14 @@ export const createBotDTOSchema = z
 
     // managed-llm 模式
     llmConfig: llmConfigSchema.optional(),
+
+    // ── 响应触发器（所有模式可选配置）──
+    // Slash Commands
+    commands: z.array(slashCommandSchema).max(25).optional(),
+    // 定时调度
+    schedules: z.array(botScheduleSchema).max(10).optional(),
+    // 事件订阅
+    eventSubscriptions: z.array(botEventSubscriptionSchema).max(10).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.executionMode === 'webhook' && !data.webhookUrl) {
@@ -141,6 +230,11 @@ export const updateBotDTOSchema = z.object({
   webhookUrl: z.string().url().optional(),
   templateConfig: z.record(z.string(), z.unknown()).optional(),
   llmConfig: llmConfigSchema.partial().optional(),
+
+  // 响应触发器更新
+  commands: z.array(slashCommandSchema).max(25).optional(),
+  schedules: z.array(botScheduleSchema).max(10).optional(),
+  eventSubscriptions: z.array(botEventSubscriptionSchema).max(10).optional(),
 });
 
 export type UpdateBotDTO = z.infer<typeof updateBotDTOSchema>;
@@ -221,4 +315,11 @@ export {
   autoResponderConfigSchema,
   autoResponderRuleSchema,
   channelBotPolicySchema,
+  slashCommandSchema,
+  slashCommandParamSchema,
+  slashCommandHandlerSchema,
+  botScheduleSchema,
+  scheduleActionSchema,
+  botEventSubscriptionSchema,
+  eventActionSchema,
 };

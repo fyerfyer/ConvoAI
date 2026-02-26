@@ -84,7 +84,6 @@ export default function EditChannelBotDialog({
             ? (overrideTools as Array<
                 | 'web-search'
                 | 'code-execution'
-                | 'image-generation'
                 | 'summarize-user'
                 | 'channel-history'
                 | 'guild-info'

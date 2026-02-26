@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Readable } from 'stream';
-import { randomBytes } from 'crypto';
 
 import { BotDocument, LlmConfigEmbedded } from '../schemas/bot.schema';
 import { EncryptionService } from '../crypto/encryption.service';
@@ -20,7 +19,6 @@ import { BotStreamProducer } from '../bot-stream.producer';
 
 import {
   BotExecutionContext,
-  BotStreamStartPayload,
   BotStreamChunkPayload,
   LLM_PROVIDER,
   MEMORY_SCOPE,
@@ -59,6 +57,13 @@ export class LlmRunner {
         ctx.channelId,
         "⚠️ AI Agent haven't been configured yet. Please set up the LLM configuration for this bot.",
       );
+      // Emit streamEnd to clear the "Thinking..." indicator
+      await this.botStreamProducer.emitStreamEnd({
+        botId: ctx.botId,
+        channelId: ctx.channelId,
+        content: '',
+        done: true,
+      });
       return;
     }
 
@@ -115,6 +120,15 @@ export class LlmRunner {
 
       const userMessage = this.getUserFriendlyError(error, axiosData);
       await this.sendBotMessage(bot, ctx.channelId, userMessage);
+
+      // Emit streamEnd to clear the "Thinking..." indicator on the frontend
+      // (AgentRunner.dispatch already emitted streamStart)
+      await this.botStreamProducer.emitStreamEnd({
+        botId: ctx.botId,
+        channelId: ctx.channelId,
+        content: '',
+        done: true,
+      });
     }
   }
 
@@ -194,6 +208,14 @@ export class LlmRunner {
       if (content.trim()) {
         await this.sendBotMessage(bot, ctx.channelId, content);
       }
+
+      // 通知前端结束（清除 Thinking 状态）
+      await this.botStreamProducer.emitStreamEnd({
+        botId: ctx.botId,
+        channelId: ctx.channelId,
+        content: content,
+        done: true,
+      });
       return;
     }
 
@@ -206,6 +228,14 @@ export class LlmRunner {
       ctx.channelId,
       '⚠️ Response generation took too long. Please try again.',
     );
+
+    // 通知前端结束（清除 Thinking 状态）
+    await this.botStreamProducer.emitStreamEnd({
+      botId: ctx.botId,
+      channelId: ctx.channelId,
+      content: '',
+      done: true,
+    });
   }
 
   private updateMemoryInBackground(ctx: BotExecutionContext): void {
@@ -236,16 +266,10 @@ export class LlmRunner {
     config: LlmConfigEmbedded,
     messages: ChatMessage[],
   ): Promise<void> {
-    const streamId = randomBytes(8).toString('hex');
     let accumulatedContent = '';
 
-    // 通知前端开始流式输出
-    const startPayload: BotStreamStartPayload = {
-      botId: ctx.botId,
-      channelId: ctx.channelId,
-      streamId,
-    };
-    await this.botStreamProducer.emitStreamStart(startPayload);
+    // 注意：BOT_STREAM_START 已经在 AgentRunner.dispatch 中发送过了，
+    // 不再重复发送，避免前端出现多余的 "Thinking..."
 
     try {
       const response = await this.httpService.axiosRef.post(
@@ -304,6 +328,19 @@ export class LlmRunner {
     return new Promise((resolve, reject) => {
       let buffer = '';
       let accumulatedContent = '';
+      let streamEndEmitted = false;
+
+      const emitEndOnce = (content: string) => {
+        if (streamEndEmitted) return;
+        streamEndEmitted = true;
+        const endPayload: BotStreamChunkPayload = {
+          botId,
+          channelId,
+          content,
+          done: true,
+        };
+        this.botStreamProducer.emitStreamEnd(endPayload);
+      };
 
       stream.on('data', (chunk: Buffer) => {
         buffer += chunk.toString();
@@ -314,13 +351,7 @@ export class LlmRunner {
           const trimmed = line.trim();
           if (!trimmed || trimmed === 'data: [DONE]') {
             if (trimmed === 'data: [DONE]') {
-              const endPayload: BotStreamChunkPayload = {
-                botId,
-                channelId,
-                content: accumulatedContent,
-                done: true,
-              };
-              this.botStreamProducer.emitStreamEnd(endPayload);
+              emitEndOnce(accumulatedContent);
             }
             continue;
           }
@@ -347,8 +378,15 @@ export class LlmRunner {
         }
       });
 
-      stream.on('end', () => resolve(accumulatedContent));
-      stream.on('error', reject);
+      stream.on('end', () => {
+        // 确保在流结束时发送 stream:end（防止部分 provider 不发送 [DONE]）
+        emitEndOnce(accumulatedContent);
+        resolve(accumulatedContent);
+      });
+      stream.on('error', (err) => {
+        emitEndOnce(accumulatedContent);
+        reject(err);
+      });
     });
   }
 

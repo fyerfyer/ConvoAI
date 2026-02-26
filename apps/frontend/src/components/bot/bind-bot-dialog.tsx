@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Bot, Check, Cpu, Globe, LayoutTemplate } from 'lucide-react';
+import { Check, Cpu, Globe, LayoutTemplate } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -55,9 +55,7 @@ export default function BindBotDialog({
   const [overridePrompt, setOverridePrompt] = useState('');
   const [overrideTools, setOverrideTools] = useState<string[]>([]);
   const [useToolOverride, setUseToolOverride] = useState(false);
-  const [memoryScope, setMemoryScope] = useState<string>(
-    MEMORY_SCOPE.CHANNEL,
-  );
+  const [memoryScope, setMemoryScope] = useState<string>(MEMORY_SCOPE.CHANNEL);
 
   // Filter to channel-scope bots not yet bound to this channel
   const alreadyBoundBotIds = new Set(channelBots.map((cb) => cb.botId));
@@ -93,7 +91,6 @@ export default function BindBotDialog({
               overrideTools: overrideTools as Array<
                 | 'web-search'
                 | 'code-execution'
-                | 'image-generation'
                 | 'summarize-user'
                 | 'channel-history'
                 | 'guild-info'

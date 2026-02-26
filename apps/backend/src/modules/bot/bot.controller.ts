@@ -15,7 +15,6 @@ import { User } from '../../common/decorators/user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 import { BotService } from './bot.service';
 import { ChannelBotService } from './channel-bot.service';
-import { ChatService } from '../chat/chat.service';
 import { TemplateRegistry } from './templates/template-registry';
 import {
   ApiResponse,
@@ -23,6 +22,7 @@ import {
   BotListResponse,
   ChannelBotResponse,
   ChannelBotListResponse,
+  ChannelSlashCommandsResponse,
   CreateBotDTO,
   createBotDTOSchema,
   UpdateBotDTO,
@@ -41,7 +41,6 @@ export class BotController {
   constructor(
     private readonly botService: BotService,
     private readonly channelBotService: ChannelBotService,
-    private readonly chatService: ChatService,
     private readonly templateRegistry: TemplateRegistry,
   ) {}
 
@@ -67,6 +66,7 @@ export class BotController {
       user.sub,
       dto,
     );
+
     return {
       data: {
         ...this.botService.toBotResponse(bot),
@@ -82,16 +82,7 @@ export class BotController {
   async listBots(
     @Param('guildId') guildId: string,
   ): Promise<ApiResponse<BotListResponse>> {
-    const bots = await this.botService.findBotsByGuild(guildId);
-    // 获取每个 Bot 的频道绑定数量
-    const responses = await Promise.all(
-      bots.map(async (b) => {
-        const bindingCount = await this.channelBotService.countBindingsByBot(
-          b._id.toString(),
-        );
-        return this.botService.toBotResponse(b, bindingCount);
-      }),
-    );
+    const responses = await this.botService.findBotsByGuildWithCounts(guildId);
     return {
       data: { bots: responses },
       statusCode: HttpStatus.OK,
@@ -102,10 +93,9 @@ export class BotController {
   async getBot(
     @Param('botId') botId: string,
   ): Promise<ApiResponse<BotResponse>> {
-    const bot = await this.botService.findById(botId);
-    const bindingCount = await this.channelBotService.countBindingsByBot(botId);
+    const response = await this.botService.findByIdWithCount(botId);
     return {
-      data: this.botService.toBotResponse(bot, bindingCount),
+      data: response,
       statusCode: HttpStatus.OK,
     };
   }
@@ -129,16 +119,7 @@ export class BotController {
     @User() user: JwtPayload,
     @Param('botId') botId: string,
   ): Promise<ApiResponse<null>> {
-    // 获取 Bot 信息以拿到 userId（用于级联删除消息）
-    const bot = await this.botService.findById(botId);
-    const botUserId = bot.userId?._id
-      ? bot.userId._id.toString()
-      : String(bot.userId);
-
-    // 级联清理：频道绑定 → Bot 消息 → Bot 定义 + 用户
-    await this.channelBotService.removeAllBindingsForBot(botId);
-    await this.chatService.deleteMessagesBySender(botUserId);
-    await this.botService.deleteBot(botId, user.sub);
+    await this.botService.deleteBotCascade(botId, user.sub);
     return {
       statusCode: HttpStatus.OK,
       message: 'Bot deleted successfully',
@@ -188,6 +169,18 @@ export class BotController {
           this.channelBotService.toChannelBotResponse(b, bot),
         ),
       },
+      statusCode: HttpStatus.OK,
+    };
+  }
+
+  @Get('channel/:channelId/commands')
+  async listChannelCommands(
+    @Param('channelId') channelId: string,
+  ): Promise<ApiResponse<ChannelSlashCommandsResponse>> {
+    const commands =
+      await this.channelBotService.listChannelCommands(channelId);
+    return {
+      data: { commands },
       statusCode: HttpStatus.OK,
     };
   }

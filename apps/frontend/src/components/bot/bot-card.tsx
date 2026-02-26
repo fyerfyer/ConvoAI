@@ -11,6 +11,9 @@ import {
   PowerOff,
   RefreshCw,
   Trash2,
+  Terminal,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -161,6 +164,33 @@ export default function BotCard({
                 className="text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-300 border-amber-500/30"
               >
                 Guild-wide
+              </Badge>
+            )}
+            {(bot.commands as unknown[])?.length > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 bg-cyan-500/15 text-cyan-400 border-cyan-500/25 flex items-center gap-0.5"
+              >
+                <Terminal className="h-2.5 w-2.5" />
+                {(bot.commands as unknown[]).length}
+              </Badge>
+            )}
+            {(bot.schedules as unknown[])?.length > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 bg-amber-500/15 text-amber-400 border-amber-500/25 flex items-center gap-0.5"
+              >
+                <Clock className="h-2.5 w-2.5" />
+                {(bot.schedules as unknown[]).length}
+              </Badge>
+            )}
+            {(bot.eventSubscriptions as unknown[])?.length > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 bg-yellow-500/15 text-yellow-400 border-yellow-500/25 flex items-center gap-0.5"
+              >
+                <Zap className="h-2.5 w-2.5" />
+                {(bot.eventSubscriptions as unknown[]).length}
               </Badge>
             )}
           </div>

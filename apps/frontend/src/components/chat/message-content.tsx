@@ -4,9 +4,12 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
+import { cn } from '@/lib/utils';
 
 interface MessageContentProps {
   content: string;
+  isBot?: boolean;
+  isError?: boolean;
 }
 
 // Process @mentions before markdown rendering
@@ -148,12 +151,27 @@ function renderWithMentions(text: string): React.ReactNode[] {
   return parts;
 }
 
-export default function MessageContent({ content }: MessageContentProps) {
+export default function MessageContent({
+  content,
+  isBot,
+  isError,
+}: MessageContentProps) {
   const processedContent = useMemo(() => preprocessContent(content), [content]);
   const shouldRenderMarkdown = useMemo(
     () => hasMarkdown(processedContent),
     [processedContent],
   );
+
+  // Bot error messages with special styling
+  if (isError) {
+    return (
+      <div className="mt-1 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+        <p className="text-sm text-amber-200 break-words whitespace-pre-wrap">
+          {renderWithMentions(processedContent)}
+        </p>
+      </div>
+    );
+  }
 
   // For simple messages without markdown, use fast plain text rendering with mentions
   if (!shouldRenderMarkdown) {
@@ -166,7 +184,12 @@ export default function MessageContent({ content }: MessageContentProps) {
 
   // For markdown content, use react-markdown
   return (
-    <div className="text-sm text-gray-200 break-words mt-0.5 message-markdown">
+    <div
+      className={cn(
+        'text-sm text-gray-200 break-words mt-0.5 message-markdown',
+        isBot && 'bot-markdown',
+      )}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={markdownComponents}

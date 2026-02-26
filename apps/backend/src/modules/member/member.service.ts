@@ -5,15 +5,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Member, MemberDocument, MemberModel } from './schemas/member.schema';
 import { Guild, GuildModel } from '../guild/schemas/guild.schema';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
+import { User, UserModel } from '../user/schemas/user.schema';
 import { ClientSession, Types, Document } from 'mongoose';
 import { UserDocument } from '../user/schemas/user.schema';
 import {
   PERMISSIONS,
   PERMISSIONOVERWRITE,
   PermissionUtil,
+  MEMBER_EVENT,
 } from '@discord-platform/shared';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 import Redis from 'ioredis';
@@ -32,7 +35,9 @@ export class MemberService {
     @InjectModel(Member.name) private readonly memberModel: MemberModel,
     @InjectModel(Guild.name) private readonly guildModel: GuildModel,
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
+    @InjectModel(User.name) private readonly userModel: UserModel,
     @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
+    private readonly eventEmitter: EventEmitter2,
     private readonly logger: AppLogger,
   ) {
     this.logger.setContext(MemberService.name);
@@ -63,6 +68,33 @@ export class MemberService {
     }
 
     return version;
+  }
+
+  /** 异步发出成员事件，不阻塞主流程 */
+  private emitMemberEvent(
+    event: string,
+    guildId: string,
+    userId: string,
+  ): void {
+    this.userModel
+      .findById(userId)
+      .lean()
+      .then((user) => {
+        this.eventEmitter.emit(event, {
+          guildId,
+          userId,
+          userName: user?.name || 'Unknown',
+          userAvatar: user?.avatar,
+        });
+      })
+      .catch((err) => {
+        this.logger.warn('Failed to emit member event', {
+          event,
+          guildId,
+          userId,
+          error: err.message,
+        });
+      });
   }
 
   // 通过自增 Guild 权限版本号，废弃所有旧权限缓存
@@ -162,6 +194,9 @@ export class MemberService {
       memberId: member._id.toString(),
     });
 
+    // 异步发出成员加入事件（不阻塞主流程）
+    this.emitMemberEvent(MEMBER_EVENT.MEMBER_JOINED, guildId, userId);
+
     return member;
   }
 
@@ -174,6 +209,9 @@ export class MemberService {
     const guildObjectId = this.toObjectId(guildId, 'guildId');
     const userObjectId = this.toObjectId(userId, 'userId');
 
+    // 先获取用户信息（在删除之前），用于事件负载
+    const userDoc = await this.userModel.findById(userObjectId).lean();
+
     await this.memberModel.deleteOne(
       {
         guild: guildObjectId,
@@ -184,6 +222,14 @@ export class MemberService {
     this.logger.log('Member removed from guild successfully', {
       guildId,
       userId,
+    });
+
+    // 异步发出成员离开事件
+    this.eventEmitter.emit(MEMBER_EVENT.MEMBER_LEFT, {
+      guildId,
+      userId,
+      userName: userDoc?.name || 'Unknown',
+      userAvatar: userDoc?.avatar,
     });
   }
 
@@ -360,7 +406,7 @@ export class MemberService {
     }
     const memberPromise = memberQuery;
 
-    let channelPromise: Promise<any>;
+    let channelPromise;
     if (channelObjectId) {
       const query = this.channelModel
         .findById(channelObjectId)
@@ -457,7 +503,7 @@ export class MemberService {
       let everyoneRoleDeny = 0;
       if (everyoneRole) {
         const overwrite = channel.permissionOverwrites.find(
-          (ow: any) =>
+          (ow) =>
             ow.id === everyoneRole._id.toString() &&
             ow.type === PERMISSIONOVERWRITE.ROLE,
         );
@@ -473,7 +519,7 @@ export class MemberService {
       // 聚合所有角色的 Allow 和 Deny
       for (const roleId of member.roles) {
         const overwrite = channel.permissionOverwrites.find(
-          (ow: any) =>
+          (ow) =>
             ow.id === roleId.toString() && ow.type === PERMISSIONOVERWRITE.ROLE,
         );
 
@@ -490,7 +536,7 @@ export class MemberService {
 
       // 用户单独的覆盖
       const memberOverwrite = channel.permissionOverwrites.find(
-        (ow: any) => ow.id === userId && ow.type === PERMISSIONOVERWRITE.MEMBER,
+        (ow) => ow.id === userId && ow.type === PERMISSIONOVERWRITE.MEMBER,
       );
 
       if (memberOverwrite) {

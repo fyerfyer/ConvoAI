@@ -4,12 +4,17 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Bot, BotDocument, BotModel } from './schemas/bot.schema';
 import { User, UserDocument, UserModel } from '../user/schemas/user.schema';
 import { Guild, GuildModel } from '../guild/schemas/guild.schema';
 import { EncryptionService } from './crypto/encryption.service';
+import { ChannelBotService } from './channel-bot.service';
+import { BotSchedulerService } from './bot-scheduler.service';
+import { ChatService } from '../chat/chat.service';
 import {
   CreateBotDTO,
   UpdateBotDTO,
@@ -31,6 +36,10 @@ export class BotService {
     @InjectModel(User.name) private readonly userModel: UserModel,
     @InjectModel(Guild.name) private readonly guildModel: GuildModel,
     private readonly encryptionService: EncryptionService,
+    @Inject(forwardRef(() => ChannelBotService))
+    private readonly channelBotService: ChannelBotService,
+    private readonly schedulerService: BotSchedulerService,
+    private readonly chatService: ChatService,
   ) {}
 
   async createBot(
@@ -111,8 +120,32 @@ export class BotService {
       };
     }
 
+    // 响应触发器
+    if (dto.commands) botData.commands = dto.commands;
+    if (dto.schedules) botData.schedules = dto.schedules;
+    if (dto.eventSubscriptions)
+      botData.eventSubscriptions = dto.eventSubscriptions;
+
     const bot = new this.botModel(botData);
     await bot.save();
+
+    // 同步定时任务（始终同步，无论 schedules 是否存在）
+    await this.schedulerService.syncBotSchedules(bot._id.toString());
+
+    // 如果是 channel-scope 且前端传入了 channelId，自动创建绑定
+    if (dto.channelId && (!dto.scope || dto.scope === BOT_SCOPE.CHANNEL)) {
+      try {
+        await this.channelBotService.bindBotToChannel(ownerId, {
+          botId: bot._id.toString(),
+          channelId: dto.channelId,
+          enabled: true,
+          memoryScope: 'channel',
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to auto-bind bot to channel: ${err.message}`);
+        // Binding may fail if channel doesn't exist, but bot is still created
+      }
+    }
 
     this.logger.log(
       `Bot "${dto.name}" created in guild ${dto.guildId} (mode: ${executionMode})`,
@@ -213,7 +246,12 @@ export class BotService {
     ownerId: string,
     dto: UpdateBotDTO,
   ): Promise<BotDocument> {
-    const bot = await this.findById(botId);
+    // 也查询 llmConfig.apiKey，不然更新时如果没有填 apiKey 会变成空的
+    const bot = await this.botModel
+      .findById(botId)
+      .select('+llmConfig.apiKey')
+      .populate('userId', 'name avatar isBot');
+    if (!bot) throw new NotFoundException('Bot not found');
     const guild = await this.guildModel.findById(bot.guildId);
     if (!guild?.owner || guild.owner.toString() !== ownerId) {
       throw new ForbiddenException('Only the guild owner can update bots');
@@ -246,12 +284,31 @@ export class BotService {
         currentConfig.maxTokens = dto.llmConfig.maxTokens;
       if (dto.llmConfig.customBaseUrl !== undefined)
         currentConfig.customBaseUrl = dto.llmConfig.customBaseUrl;
-      if (dto.llmConfig.apiKey !== undefined) {
+      if (dto.llmConfig.tools !== undefined)
+        currentConfig.tools = dto.llmConfig.tools;
+      if (
+        dto.llmConfig.apiKey !== undefined &&
+        dto.llmConfig.apiKey.trim() !== ''
+      ) {
         currentConfig.apiKey = this.encryptionService.encrypt(
           dto.llmConfig.apiKey,
         );
       }
       bot.markModified('llmConfig');
+    }
+
+    // 触发器配置更新
+    if (dto.commands !== undefined) {
+      bot.commands = dto.commands;
+      bot.markModified('commands');
+    }
+    if (dto.schedules !== undefined) {
+      bot.schedules = dto.schedules;
+      bot.markModified('schedules');
+    }
+    if (dto.eventSubscriptions !== undefined) {
+      bot.eventSubscriptions = dto.eventSubscriptions;
+      bot.markModified('eventSubscriptions');
     }
 
     if (dto.name || dto.avatar !== undefined) {
@@ -264,6 +321,10 @@ export class BotService {
     }
 
     await bot.save();
+
+    // 同步定时任务（任何更新都重新同步）
+    await this.schedulerService.syncBotSchedules(botId);
+
     return this.findById(botId);
   }
 
@@ -279,6 +340,38 @@ export class BotService {
     await this.botModel.findByIdAndDelete(botId);
 
     this.logger.log(`Bot ${botId} deleted from guild ${guild._id}`);
+  }
+
+  async deleteBotCascade(botId: string, ownerId: string): Promise<void> {
+    // 获取 Bot 信息以拿到 userId（用于级联删除消息）
+    const bot = await this.findById(botId);
+    const botUserId = bot.userId?._id
+      ? bot.userId._id.toString()
+      : String(bot.userId);
+
+    // 级联清理：定时任务 → 频道绑定 → Bot 消息 → Bot 定义 + 用户
+    this.schedulerService.clearBotJobs(botId);
+    await this.channelBotService.removeAllBindingsForBot(botId);
+    await this.chatService.deleteMessagesBySender(botUserId);
+    await this.deleteBot(botId, ownerId);
+  }
+
+  async findBotsByGuildWithCounts(guildId: string): Promise<BotResponse[]> {
+    const bots = await this.findBotsByGuild(guildId);
+    return Promise.all(
+      bots.map(async (b) => {
+        const bindingCount = await this.channelBotService.countBindingsByBot(
+          b._id.toString(),
+        );
+        return this.toBotResponse(b, bindingCount);
+      }),
+    );
+  }
+
+  async findByIdWithCount(botId: string): Promise<BotResponse> {
+    const bot = await this.findById(botId);
+    const bindingCount = await this.channelBotService.countBindingsByBot(botId);
+    return this.toBotResponse(bot, bindingCount);
   }
 
   async regenerateToken(
@@ -311,7 +404,6 @@ export class BotService {
     };
   }
 
-  // ── 响应序列化 ──
   toBotResponse(bot: BotDocument, channelBindingCount?: number): BotResponse {
     const user = bot.userId as unknown as UserDocument;
     const userId = user?._id ? user._id.toString() : String(bot.userId);
@@ -355,6 +447,12 @@ export class BotService {
         customBaseUrl: bot.llmConfig.customBaseUrl,
       };
     }
+
+    // 触发器配置
+    if (bot.commands?.length) response.commands = bot.commands;
+    if (bot.schedules?.length) response.schedules = bot.schedules;
+    if (bot.eventSubscriptions?.length)
+      response.eventSubscriptions = bot.eventSubscriptions;
 
     return response;
   }
