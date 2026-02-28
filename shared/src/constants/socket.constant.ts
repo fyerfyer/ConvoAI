@@ -12,6 +12,9 @@ export const SOCKET_EVENT = {
   VOICE_LEAVE: 'voiceLeave',
   VOICE_STATE_UPDATE: 'voiceStateUpdate',
   VOICE_PARTICIPANTS: 'voiceParticipants',
+  // Unread tracking
+  UNREAD_UPDATE: 'unreadUpdate',
+  MARK_READ: 'markRead',
 } as const;
 
 export type SocketEvent = (typeof SOCKET_EVENT)[keyof typeof SOCKET_EVENT];

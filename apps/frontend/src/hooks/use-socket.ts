@@ -6,12 +6,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/auth-store';
 import { useChatStore } from '../stores/chat-store';
 import { useBotStreamStore } from '../stores/bot-stream-store';
+import { useUnreadStore } from '../stores/unread-store';
 import { chatKeys } from './use-chat';
 import {
   CreateMessageDTO,
   MessageResponse,
   BotStreamStartPayload,
   BotStreamChunkPayload,
+  UnreadUpdatePayload,
   SOCKET_EVENT,
 } from '@discord-platform/shared';
 
@@ -27,6 +29,7 @@ export function useSocket() {
   const queryClient = useQueryClient();
   const { addMessage, setTypingUser, removeTypingUser } = useChatStore();
   const { startStream, appendChunk, endStream, clearAll } = useBotStreamStore();
+  const setUnread = useUnreadStore((state) => state.setUnread);
 
   // Initialize and connect socket
   useEffect(() => {
@@ -113,6 +116,20 @@ export function useSocket() {
       }
     });
 
+    // Unread update events
+    socket.on(SOCKET_EVENT.UNREAD_UPDATE, (data: UnreadUpdatePayload) => {
+      // Only increment unread if user is not currently viewing this channel
+      const currentChannel = useChatStore.getState().currentChannelId;
+      if (currentChannel !== data.channelId) {
+        useUnreadStore.getState().setUnread(data.channelId, {
+          channelId: data.channelId,
+          count: data.count,
+          lastMessageId: data.lastMessageId,
+          lastMessageAt: data.lastMessageAt,
+        });
+      }
+    });
+
     return () => {
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
@@ -131,6 +148,7 @@ export function useSocket() {
     appendChunk,
     endStream,
     clearAll,
+    setUnread,
   ]);
 
   // Join a channel room
@@ -163,12 +181,22 @@ export function useSocket() {
     }
   }, []);
 
+  // Mark channel as read via socket
+  const markRead = useCallback((channelId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit(SOCKET_EVENT.MARK_READ, { channelId });
+    }
+    // Immediately clear locally
+    useUnreadStore.getState().clearUnread(channelId);
+  }, []);
+
   return {
     socket: socketRef.current,
     joinRoom,
     leaveRoom,
     sendMessage,
     sendTyping,
+    markRead,
     isConnected,
   };
 }

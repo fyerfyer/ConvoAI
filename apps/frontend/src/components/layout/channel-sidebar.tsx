@@ -55,9 +55,11 @@ import GuildSettingsDialog from '@/components/guild/guild-settings-dialog';
 import CreateBotDialog from '@/components/bot/create-bot-dialog';
 import ChannelBotDialog from '@/components/bot/channel-bot-dialog';
 import { useBots } from '@/hooks/use-bot';
+import { useGuildUnread } from '@/hooks/use-unread';
 import { usePermissions } from '@/hooks/use-permission';
 import VoiceStatusBar from '@/components/voice/voice-status-bar';
 import { CHANNEL, ChannelResponse, BOT_STATUS } from '@discord-platform/shared';
+import { useUnreadStore } from '@/stores/unread-store';
 
 export default function ChannelSidebar() {
   const router = useRouter();
@@ -105,9 +107,16 @@ export default function ChannelSidebar() {
   // Bots query
   const { data: bots = [] } = useBots(guildId);
 
+  // Fetch unread counts for this guild
+  useGuildUnread(guildId);
+
   // Permissions
   const { canManageRoles } = usePermissions(guildId);
   const activeBots = bots.filter((b) => b.status === BOT_STATUS.ACTIVE);
+  const unreadByChannel = useUnreadStore((state) => state.unreadByChannel);
+
+  const getUnreadTotal = (ids: string[]) =>
+    ids.reduce((total, id) => total + (unreadByChannel[id]?.count ?? 0), 0);
 
   // DnD state
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -155,6 +164,7 @@ export default function ChannelSidebar() {
     ...uncategorizedTextChannels.map((c) => c.id),
     ...uncategorizedVoiceChannels.map((c) => c.id),
   ];
+  const uncategorizedUnread = getUnreadTotal(allUncategorizedIds);
 
   const toggleSection = (section: string) => {
     setCollapsedSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -346,6 +356,9 @@ export default function ChannelSidebar() {
                         c.parentId === category.id &&
                         c.type !== CHANNEL.GUILD_CATEGORY,
                     ) ?? [];
+                  const categoryUnread = getUnreadTotal(
+                    categoryChannels.map((c) => c.id),
+                  );
 
                   return (
                     <SortableCategory
@@ -354,6 +367,7 @@ export default function ChannelSidebar() {
                       channels={categoryChannels}
                       isCollapsed={!!isCollapsed}
                       activeChannelId={activeChannelId}
+                      unreadCount={categoryUnread}
                       onToggle={() => toggleSection(category.id)}
                       onChannelClick={handleChannelClick}
                       onChannelContextMenu={handleContextMenu}
@@ -375,6 +389,13 @@ export default function ChannelSidebar() {
                         <ChevronDown className="mr-0.5 h-3 w-3" />
                       )}
                       Channels
+                      {uncategorizedUnread > 0 && (
+                        <span className="ml-auto flex h-4 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-bold text-amber-300">
+                          {uncategorizedUnread > 99
+                            ? '99+'
+                            : uncategorizedUnread}
+                        </span>
+                      )}
                     </button>
                     {!collapsedSections['uncategorized'] && (
                       <SortableContext

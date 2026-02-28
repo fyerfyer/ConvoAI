@@ -101,7 +101,7 @@ export class BotOrchestratorService {
           x !== null,
       );
 
-      // Slash Command 检测 
+      // Slash Command 检测
       if (isSlashCommand) {
         const parsed = this.parseSlashCommand(content);
         if (parsed) {
@@ -149,7 +149,6 @@ export class BotOrchestratorService {
         (m) => m.messageId !== currentMsgId,
       );
 
-      // Dispatch Channel-bound bots（带频道级覆盖配置）
       for (const { bot, binding } of mentionedChannelBots) {
         const botUser = bot.userId as unknown as UserDocument;
         const botName = botUser.name;
@@ -167,6 +166,8 @@ export class BotOrchestratorService {
           channelId,
           guildId,
           memoryScope,
+          sender._id.toString(),
+          cleanContent,
         );
 
         const contextMessages =
@@ -223,6 +224,8 @@ export class BotOrchestratorService {
           channelId,
           guildId,
           MEMORY_SCOPE.CHANNEL,
+          sender._id.toString(),
+          cleanContent,
         );
 
         const executionCtx: BotExecutionContext = {
@@ -343,6 +346,8 @@ export class BotOrchestratorService {
         channelId,
         guildId,
         memoryScope,
+        sender._id.toString(),
+        content,
       );
 
       const context = await this.buildContext(channelId);
@@ -431,6 +436,8 @@ export class BotOrchestratorService {
         channelId,
         guildId,
         MEMORY_SCOPE.CHANNEL,
+        sender._id.toString(),
+        content,
       );
 
       const context = await this.buildContext(channelId);
@@ -554,6 +561,7 @@ export class BotOrchestratorService {
         role: sender?.isBot ? ('assistant' as const) : ('user' as const),
         content: msg.content,
         author: sender?.name || 'Unknown',
+        authorId: sender?._id?.toString(),
         messageId: msg._id.toString(),
         timestamp: msg.createdAt?.toISOString() || '',
       };

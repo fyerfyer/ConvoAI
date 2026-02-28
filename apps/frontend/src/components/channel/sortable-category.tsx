@@ -15,6 +15,7 @@ interface SortableCategoryProps {
   channels: ChannelResponse[];
   isCollapsed: boolean;
   activeChannelId?: string;
+  unreadCount?: number;
   onToggle: () => void;
   onChannelClick: (channel: ChannelResponse) => void;
   onChannelContextMenu: (e: React.MouseEvent, channel: ChannelResponse) => void;
@@ -25,6 +26,7 @@ export default function SortableCategory({
   channels,
   isCollapsed,
   activeChannelId,
+  unreadCount = 0,
   onToggle,
   onChannelClick,
   onChannelContextMenu,
@@ -57,6 +59,11 @@ export default function SortableCategory({
           <ChevronDown className="mr-0.5 h-3 w-3" />
         )}
         {category.name}
+        {unreadCount > 0 && (
+          <span className="ml-auto flex h-4 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-bold text-amber-300">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
       {!isCollapsed && (
         <SortableContext

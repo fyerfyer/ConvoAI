@@ -5,11 +5,13 @@ import { WsJwtGuard } from './guards/ws-jwt.guard';
 import { ChatModule } from '../chat/chat.module';
 import { ChannelModule } from '../channel/channel.module';
 import { BotModule } from '../bot/bot.module';
+import { MemberModule } from '../member/member.module';
+import { UnreadModule } from '../unread/unread.module';
 import { MessageProcessor } from './message.processor';
 import { BotStreamProcessor } from './bot-stream.processor';
 
 @Module({
-  imports: [ChatModule, ChannelModule, BotModule],
+  imports: [ChatModule, ChannelModule, BotModule, MemberModule, UnreadModule],
   providers: [
     ChatGateway,
     GatewaySessionManager,

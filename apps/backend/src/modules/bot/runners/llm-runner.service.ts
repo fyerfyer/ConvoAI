@@ -121,8 +121,7 @@ export class LlmRunner {
       const userMessage = this.getUserFriendlyError(error, axiosData);
       await this.sendBotMessage(bot, ctx.channelId, userMessage);
 
-      // Emit streamEnd to clear the "Thinking..." indicator on the frontend
-      // (AgentRunner.dispatch already emitted streamStart)
+      // 不管怎么样都发送 End event 让前端不一直显示 thinking
       await this.botStreamProducer.emitStreamEnd({
         botId: ctx.botId,
         channelId: ctx.channelId,
@@ -249,6 +248,8 @@ export class LlmRunner {
         ctx.guildId,
         ctx.botName,
         memoryScope,
+        ctx.author.id,
+        ctx.author.name,
       )
       .catch((err) => {
         this.logger.error(

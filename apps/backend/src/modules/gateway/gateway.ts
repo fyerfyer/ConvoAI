@@ -30,6 +30,7 @@ import { GlobalWsExceptionFilter } from './filters/ws-exception.filter';
 import { ChatService } from '../chat/chat.service';
 import { ChannelService } from '../channel/channel.service';
 import { WsThrottlerGuard } from '../../common/guards/ws-throttler.guard';
+import { UnreadService } from '../unread/unread.service';
 
 @WebSocketGateway({
   cors: {
@@ -49,6 +50,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly wsJwtGuard: WsJwtGuard,
     private readonly chatService: ChatService,
     private readonly channelService: ChannelService,
+    private readonly unreadService: UnreadService,
   ) {}
 
   // 在 Connection 阶段，Guard 还没有被触发，需要手动注入
@@ -120,6 +122,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleHeartbeat(@ConnectedSocket() client: Socket) {
     const user: JwtPayload = client.data.user;
     await this.sessionManager.refreshUserSocketTTL(user.sub);
+    return { status: 'ok' };
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage(SOCKET_EVENT.MARK_READ)
+  async handleMarkRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channelId: string },
+  ) {
+    const user: JwtPayload = client.data.user;
+    await this.unreadService.markRead(user.sub, payload.channelId);
     return { status: 'ok' };
   }
 

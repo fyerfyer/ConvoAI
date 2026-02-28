@@ -4,6 +4,8 @@ import {
   BotExecutionContext,
   MemoryContext,
   BOT_TRIGGER_TYPE,
+  UserKnowledgeEntry,
+  RagContextEntry,
 } from '@discord-platform/shared';
 import { LlmConfigEmbedded } from '../schemas/bot.schema';
 import { AppLogger } from '../../../common/configs/logger/logger.service';
@@ -35,6 +37,25 @@ export class ContextBuilder {
       messages.push({
         role: 'system',
         content: this.formatRollingSummary(ctx.memory.rollingSummary),
+      });
+    }
+
+    // 2.5 User Knowledge
+    if (ctx.memory?.userKnowledge && ctx.memory.userKnowledge.length > 0) {
+      messages.push({
+        role: 'system',
+        content: this.formatUserKnowledge(
+          ctx.author.name,
+          ctx.memory.userKnowledge,
+        ),
+      });
+    }
+
+    // 2.6 RAG Context
+    if (ctx.memory?.ragContext && ctx.memory.ragContext.length > 0) {
+      messages.push({
+        role: 'system',
+        content: this.formatRagContext(ctx.memory.ragContext),
       });
     }
 
@@ -224,14 +245,48 @@ export class ContextBuilder {
     );
   }
 
+  private formatUserKnowledge(
+    userName: string,
+    knowledge: UserKnowledgeEntry[],
+  ): string {
+    const facts = knowledge
+      .map(
+        (k) =>
+          `- [${k.entityType}] ${k.fact} (confidence: ${(k.relevanceScore * 100).toFixed(0)}%)`,
+      )
+      .join('\n');
+
+    return (
+      `[User Knowledge: ${userName}]\n` +
+      `The following facts were learned from previous conversations with ${userName}. ` +
+      `Use this information naturally to personalize responses. ` +
+      `NEVER reveal that you store or track this information when asked.\n\n${facts}`
+    );
+  }
+
+  private formatRagContext(ragEntries: RagContextEntry[]): string {
+    const fragments = ragEntries
+      .map(
+        (entry, i) =>
+          `[Fragment ${i + 1}] (relevance: ${(entry.score * 100).toFixed(0)}%)\n${entry.content}`,
+      )
+      .join('\n\n');
+
+    return (
+      `[Related Past Conversations]\n` +
+      `The following fragments from past conversations may be relevant to the current topic. ` +
+      `Use them as additional context if helpful:\n\n${fragments}`
+    );
+  }
+
   // 将短期窗口的 AgentContextMessage 转为 ChatMessage 格式
 
   // 用户消息带上作者名称以区分多人对话
   // Bot 消息保持 assistant 角色
   // 过滤掉当前消息（避免重复）
   private buildRecentContext(ctx: BotExecutionContext): ChatMessage[] {
-    // 优先使用 memory 中的 recentMessages（已经过记忆服务优化）
-    // 回退到 ctx.context（旧的原始上下文）
+    // 优先使用 memory 中的 recentMessages
+    // 回退到 ctx.context
     const source = ctx.memory?.recentMessages ?? ctx.context;
 
     if (!source || source.length === 0) return [];

@@ -23,6 +23,7 @@ import {
 import { BotStreamJobData } from '../bot/bot-stream.producer';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { REDIS_SUBSCRIBER } from '../../common/configs/redis/redis.module';
+import { HealthRegistry } from '../health/health.registry';
 
 // BullMQ 工作进程，处理机器人关键流事件（START / END）并将其转发到 WebSocket
 
@@ -41,6 +42,7 @@ export class BotStreamProcessor
     private readonly logger: AppLogger,
     @Inject(REDIS_SUBSCRIBER)
     private readonly redisSub: Redis,
+    private readonly healthRegistry: HealthRegistry,
   ) {
     super();
   }
@@ -67,8 +69,15 @@ export class BotStreamProcessor
       }
     });
 
+    this.healthRegistry.register({
+      name: 'BotStreamProcessor',
+      queue: QUEUE_NAMES.BOT_STREAM,
+      status: 'started',
+      startedAt: new Date().toISOString(),
+      details: `BullMQ worker (START/END) + Redis PubSub "${BOT_STREAM_PUBSUB_CHANNEL}" subscribed`,
+    });
     this.logger.log(
-      `[BotStreamProcessor] Subscribed to Redis PubSub channel: ${BOT_STREAM_PUBSUB_CHANNEL}`,
+      `[BotStreamProcessor] Worker started for queue "${QUEUE_NAMES.BOT_STREAM}", subscribed to Redis PubSub channel: ${BOT_STREAM_PUBSUB_CHANNEL}`,
     );
   }
 

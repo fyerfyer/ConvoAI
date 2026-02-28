@@ -6,10 +6,15 @@ import {
 } from '../../common/configs/queue/queue.constants';
 import { ChatService } from '../chat/chat.service';
 import { BotOrchestratorService } from '../bot/bot-orchestrator.service';
+import { UnreadService } from '../unread/unread.service';
+import { MemberService } from '../member/member.service';
 import { ChatGateway } from './gateway';
 import { AppLogger } from '../../common/configs/logger/logger.service';
-import { Inject, forwardRef } from '@nestjs/common';
+import { Inject, forwardRef, OnModuleInit } from '@nestjs/common';
 import { SOCKET_EVENT } from '@discord-platform/shared';
+import { UserDocument } from '../user/schemas/user.schema';
+import { ChannelService } from '../channel/channel.service';
+import { HealthRegistry } from '../health/health.registry';
 
 export interface MessageBroadcastData {
   messageId: string;
@@ -17,16 +22,33 @@ export interface MessageBroadcastData {
 }
 
 @Processor(QUEUE_NAMES.MESSAGE)
-export class MessageProcessor extends WorkerHost {
+export class MessageProcessor extends WorkerHost implements OnModuleInit {
   constructor(
     private readonly chatService: ChatService,
     @Inject(forwardRef(() => BotOrchestratorService))
     private readonly botOrchestrator: BotOrchestratorService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
+    private readonly unreadService: UnreadService,
+    private readonly memberService: MemberService,
+    private readonly channelService: ChannelService,
     private readonly logger: AppLogger,
+    private readonly healthRegistry: HealthRegistry,
   ) {
     super();
+  }
+
+  onModuleInit(): void {
+    this.healthRegistry.register({
+      name: 'MessageProcessor',
+      queue: QUEUE_NAMES.MESSAGE,
+      status: 'started',
+      startedAt: new Date().toISOString(),
+      details: 'Handles message.broadcast & message.bot-detect jobs',
+    });
+    this.logger.log(
+      `[MessageProcessor] Worker started for queue "${QUEUE_NAMES.MESSAGE}"`,
+    );
   }
 
   async process(job: Job<MessageBroadcastData>): Promise<void> {
@@ -58,6 +80,48 @@ export class MessageProcessor extends WorkerHost {
     const roomId = (message.channelId ?? '').toString();
 
     this.gateway.server.to(roomId).emit(SOCKET_EVENT.NEW_MESSAGE, response);
+
+    try {
+      const sender = message.sender as UserDocument;
+      const senderId = sender?._id?.toString() || String(message.sender);
+
+      const channel = await this.channelService.getChannelById(roomId);
+      if (channel) {
+        const guildId = String(channel.guild);
+        const members = await this.memberService.getGuildMembers(guildId);
+        const memberUserIds = members.map((m) => String(m.user));
+
+        await this.unreadService.incrementUnread(
+          roomId,
+          messageId,
+          message.createdAt?.toISOString() || new Date().toISOString(),
+          memberUserIds,
+          senderId,
+        );
+
+        // 在每个 room 中广播未读消息更新
+        for (const userId of memberUserIds) {
+          if (userId === senderId) continue;
+          const unread = await this.unreadService.getUnreadForChannel(
+            userId,
+            roomId,
+          );
+          this.gateway.server
+            .to(`user:${userId}`)
+            .emit(SOCKET_EVENT.UNREAD_UPDATE, {
+              channelId: roomId,
+              count: unread.count,
+              lastMessageId: messageId,
+              lastMessageAt:
+                message.createdAt?.toISOString() || new Date().toISOString(),
+            });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[MessageProcessor] Unread tracking failed for message ${messageId}: ${err}`,
+      );
+    }
 
     this.logger.debug(
       `[MessageProcessor] Broadcast message ${messageId} to room ${roomId}`,

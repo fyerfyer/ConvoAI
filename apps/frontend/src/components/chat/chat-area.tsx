@@ -45,6 +45,7 @@ export default function ChatArea({
     leaveRoom,
     sendMessage: socketSendMessage,
     sendTyping,
+    markRead,
   } = useSocket();
   const { messagesByChannel, setMessages, setCurrentChannel, typingUsers } =
     useChatStore();
@@ -71,6 +72,8 @@ export default function ChatArea({
     // Join new room
     joinRoom(channelId);
     setCurrentChannel(channelId);
+    // Mark channel as read when viewing it
+    markRead(channelId);
     prevChannelRef.current = channelId;
 
     return () => {

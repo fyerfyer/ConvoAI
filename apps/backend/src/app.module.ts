@@ -15,8 +15,10 @@ import { ChannelModule } from './modules/channel/channel.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
 import { BotModule } from './modules/bot/bot.module';
 import { MemoryModule } from './modules/memory/memory.module';
+import { UnreadModule } from './modules/unread/unread.module';
 import { QueueModule } from './common/configs/queue/queue.module';
 import { ThrottleModule } from './common/configs/throttle/throttle.module';
+import { HealthModule } from './modules/health/health.module';
 
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
@@ -30,6 +32,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     JwtConfigModule,
     QueueModule,
     ThrottleModule,
+    HealthModule,
     AuthModule,
     UserModule,
     GuildModule,
@@ -41,6 +44,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     GatewayModule,
     BotModule,
     MemoryModule,
+    UnreadModule,
   ],
 })
 export class AppModule {}

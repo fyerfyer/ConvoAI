@@ -242,6 +242,16 @@ export interface VoiceTokenResponse {
   url: string;
 }
 
+// Unread
+export interface UnreadCountResponse {
+  channels: Array<{
+    channelId: string;
+    count: number;
+    lastMessageId?: string;
+    lastMessageAt?: string;
+  }>;
+}
+
 export interface VoiceParticipant {
   userId: string;
   name: string;

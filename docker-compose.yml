@@ -1,41 +1,4 @@
 services:
-  discord-backend:
-    build:
-      context: .
-      dockerfile: apps/backend/Dockerfile
-    ports:
-      - '3000:3000'
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - MONGODB_URI=mongodb://admin:password123@mongo:27017/discord-platform?authSource=admin&replicaSet=rs0
-      - REDIS_URI=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_BUCKET=discord-platform
-      - PINOT_LOG_LEVEL=info
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-
-  discord-frontend:
-    build:
-      context: .
-      dockerfile: apps/frontend/Dockerfile
-    ports:
-      - '4200:3000'
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
-    depends_on:
-      - discord-backend
-
   mongo:
     image: mongo:7
     ports:
@@ -99,6 +62,20 @@ services:
       timeout: 5s
       retries: 5
 
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - '6333:6333'
+      - '6334:6334'
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:6333/readyz']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   livekit:
     image: livekit/livekit-server:latest
     ports:
@@ -119,3 +96,4 @@ volumes:
   mongo_data:
   redis_data:
   minio_data:
+  qdrant_data:

@@ -44,8 +44,8 @@ import { QUEUE_NAMES, DEFAULT_JOB_OPTIONS } from './queue.constants';
 
     BullModule.registerQueue(
       { name: QUEUE_NAMES.MESSAGE },
-      { name: QUEUE_NAMES.BOT_EXECUTION },
       { name: QUEUE_NAMES.BOT_STREAM },
+      { name: QUEUE_NAMES.MEMORY },
     ),
   ],
   exports: [BullModule],

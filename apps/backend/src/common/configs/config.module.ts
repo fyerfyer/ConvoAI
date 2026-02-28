@@ -49,6 +49,14 @@ import { join } from 'path';
         SUMMARY_LLM_BASE_URL: Joi.string().optional().allow('').default(''),
         SUMMARY_LLM_API_KEY: Joi.string().optional().allow('').default(''),
         SUMMARY_LLM_MODEL: Joi.string().optional().default('deepseek-chat'),
+        // Embedding API (Dashscope text-embedding-v4)
+        EMBEDDING_BASE_URL: Joi.string().optional().allow('').default(''),
+        EMBEDDING_API_KEY: Joi.string().optional().allow('').default(''),
+        EMBEDDING_MODEL: Joi.string().optional().default('text-embedding-v4'),
+        EMBEDDING_DIMENSION: Joi.number().optional().default(1024),
+        // Qdrant vector database
+        QDRANT_URL: Joi.string().optional().default('http://localhost:6333'),
+        QDRANT_COLLECTION: Joi.string().optional().default('discord_memory'),
       }),
     }),
   ],

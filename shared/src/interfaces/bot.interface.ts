@@ -17,6 +17,7 @@ export interface AgentContextMessage {
   role: 'user' | 'assistant';
   content: string;
   author: string;
+  authorId?: string;
   messageId: string;
   timestamp: string;
 }
@@ -151,6 +152,68 @@ export interface MemoryContext {
   recentMessages: AgentContextMessage[];
   // 已纳入摘要的消息总数
   summarizedMessageCount: number;
+  // 用户相关知识（从 UserKnowledge 查询）
+  userKnowledge?: UserKnowledgeEntry[];
+  // RAG 检索到的相关历史片段
+  ragContext?: RagContextEntry[];
+}
+
+// ── User Knowledge (per-user memory) ──
+export interface UserKnowledgeEntry {
+  fact: string;
+  entityType: string;
+  source: string;
+  relevanceScore: number;
+  extractedAt: string;
+  expiresAt?: string;
+}
+
+// ── RAG Context Entry (from vector search) ──
+export interface RagContextEntry {
+  content: string;
+  score: number;
+  channelId: string;
+  timestamp: string;
+}
+
+// ── Unread Tracking ──
+export interface UnreadInfo {
+  channelId: string;
+  count: number;
+  lastMessageId?: string;
+  lastMessageAt?: string;
+}
+
+export interface UnreadUpdatePayload {
+  channelId: string;
+  count: number;
+  lastMessageId: string;
+  lastMessageAt: string;
+}
+
+// ── Memory Job Payloads ──
+export interface SummarizeJobPayload {
+  botId: string;
+  channelId: string;
+  guildId: string;
+  botName: string;
+  memoryScope: string;
+}
+
+export interface ExtractEntitiesJobPayload {
+  botId: string;
+  channelId: string;
+  guildId: string;
+  userId: string;
+  userName: string;
+  messages: AgentContextMessage[];
+}
+
+export interface EmbedConversationJobPayload {
+  botId: string;
+  channelId: string;
+  guildId: string;
+  messages: AgentContextMessage[];
 }
 
 // ── Bot 执行上下文（传递给 Runner 的统一结构）──

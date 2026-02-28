@@ -103,7 +103,34 @@ export const MEMORY_DEFAULTS = {
   SUMMARY_TRIGGER_THRESHOLD: 30,
   SUMMARY_BATCH_SIZE: 40,
   SUMMARY_MAX_LENGTH: 2000,
+  ENTITY_MAX_PER_USER: 200,
+  ENTITY_DEFAULT_TTL_DAYS: 90,
+  ENTITY_DECAY_INTERVAL_DAYS: 7,
+  RAG_TOP_K: 5,
+  RAG_SCORE_THRESHOLD: 0.6,
+  EMBEDDING_BATCH_SIZE: 10,
 } as const;
+
+// ── Memory Job Types (BullMQ) ──
+export const MEMORY_JOB = {
+  SUMMARIZE: 'memory.summarize',
+  EXTRACT_ENTITIES: 'memory.extract-entities',
+  EMBED_CONVERSATION: 'memory.embed-conversation',
+  DECAY_ENTITIES: 'memory.decay-entities',
+} as const;
+
+export type MemoryJobKey = keyof typeof MEMORY_JOB;
+export type MemoryJobValue = (typeof MEMORY_JOB)[MemoryJobKey];
+
+export const ENTITY_TYPE = {
+  FACT: 'fact',
+  PREFERENCE: 'preference',
+  TASK: 'task',
+  RELATIONSHIP: 'relationship',
+} as const;
+
+export type EntityTypeKey = keyof typeof ENTITY_TYPE;
+export type EntityTypeValue = (typeof ENTITY_TYPE)[EntityTypeKey];
 
 export const BOT_TRIGGER_TYPE = {
   MENTION: 'mention',

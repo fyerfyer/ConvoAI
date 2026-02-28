@@ -1,16 +1,12 @@
 export const QUEUE_NAMES = {
   MESSAGE: 'message',
-  BOT_EXECUTION: 'bot-execution',
   BOT_STREAM: 'bot-stream',
+  MEMORY: 'memory',
 } as const;
 
 export const MESSAGE_JOB = {
   BROADCAST: 'message.broadcast',
   BOT_DETECT: 'message.bot-detect',
-} as const;
-
-export const BOT_JOB = {
-  DISPATCH: 'bot.dispatch',
 } as const;
 
 export const BOT_STREAM_JOB = {
