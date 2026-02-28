@@ -57,6 +57,18 @@ import { join } from 'path';
         // Qdrant vector database
         QDRANT_URL: Joi.string().optional().default('http://localhost:6333'),
         QDRANT_COLLECTION: Joi.string().optional().default('discord_memory'),
+        // Memory Filter LLM (optional, for AI-powered filtering)
+        MEMORY_FILTER_LLM_BASE_URL: Joi.string()
+          .optional()
+          .allow('')
+          .default(''),
+        MEMORY_FILTER_LLM_API_KEY: Joi.string()
+          .optional()
+          .allow('')
+          .default(''),
+        MEMORY_FILTER_LLM_MODEL: Joi.string()
+          .optional()
+          .default('deepseek-chat'),
       }),
     }),
   ],

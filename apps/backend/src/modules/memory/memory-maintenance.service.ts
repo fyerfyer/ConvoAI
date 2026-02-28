@@ -11,6 +11,7 @@ import { ChatService } from '../chat/chat.service';
 import { MemoryProducer } from './memory.producer';
 import { RagService } from './services/rag.service';
 import { EntityExtractionService } from './services/entity-extraction.service';
+import { MemoryFilterService } from './services/memory-filter.service';
 import { QdrantService } from './services/qdrant.service';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 import {
@@ -37,6 +38,7 @@ export class MemoryMaintenanceService implements OnModuleInit {
     private readonly memoryProducer: MemoryProducer,
     private readonly ragService: RagService,
     private readonly entityExtractionService: EntityExtractionService,
+    private readonly memoryFilterService: MemoryFilterService,
     private readonly qdrantService: QdrantService,
     private readonly logger: AppLogger,
   ) {}
@@ -120,10 +122,13 @@ export class MemoryMaintenanceService implements OnModuleInit {
     });
     if (existing > 0) return;
 
-    const recentMessages = await this.getRecentMessages(
+    const rawMessages = await this.getRecentMessages(
       channelId,
       MEMORY_DEFAULTS.SHORT_TERM_WINDOW_SIZE + 10,
     );
+
+    const filtered = await this.memoryFilterService.filterMessages(rawMessages);
+    const recentMessages = this.memoryFilterService.sanitizePII(filtered);
 
     if (recentMessages.length === 0) return;
 
@@ -149,7 +154,11 @@ export class MemoryMaintenanceService implements OnModuleInit {
     const guildId = String(memory.guildId);
 
     const channelId = String(memory.channelId);
-    const recentMessages = await this.getRecentMessages(channelId, 30);
+    const rawMessages = await this.getRecentMessages(channelId, 30);
+
+    // 内容质量过滤
+    const recentMessages =
+      await this.memoryFilterService.filterMessages(rawMessages);
     if (recentMessages.length === 0) return;
 
     const userBuckets = new Map<
@@ -175,6 +184,11 @@ export class MemoryMaintenanceService implements OnModuleInit {
 
     for (const [userId, entry] of entries) {
       if (entry.messages.length === 0) continue;
+
+      // 语义密度校验，避免对 "hi", "ok", "bye" 浪费 LLM 调用
+      if (!(await this.memoryFilterService.hasSemanticDensity(entry.messages)))
+        continue;
+
       const existing = await this.userKnowledgeModel.countDocuments({
         botId,
         userId,

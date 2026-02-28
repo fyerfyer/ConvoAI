@@ -13,6 +13,7 @@ import { EmbeddingService } from './services/embedding.service';
 import { QdrantService } from './services/qdrant.service';
 import { EntityExtractionService } from './services/entity-extraction.service';
 import { RagService } from './services/rag.service';
+import { MemoryFilterService } from './services/memory-filter.service';
 import { MemoryProducer } from './memory.producer';
 import { MemoryProcessor } from './memory.processor';
 import { ChatModule } from '../chat/chat.module';
@@ -41,6 +42,7 @@ import { Bot, botSchema } from '../bot/schemas/bot.schema';
     QdrantService,
     EntityExtractionService,
     RagService,
+    MemoryFilterService,
     MemoryProducer,
     MemoryProcessor,
     MemoryMaintenanceService,
@@ -50,6 +52,7 @@ import { Bot, botSchema } from '../bot/schemas/bot.schema';
     SummaryService,
     EntityExtractionService,
     RagService,
+    MemoryFilterService,
     MemoryProducer,
   ],
 })

@@ -5,6 +5,7 @@ import { QUEUE_NAMES } from '../../common/configs/queue/queue.constants';
 import { SummaryService } from './services/summary.service';
 import { EntityExtractionService } from './services/entity-extraction.service';
 import { RagService } from './services/rag.service';
+import { MemoryFilterService } from './services/memory-filter.service';
 import { ChatService } from '../chat/chat.service';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 import { UserDocument } from '../user/schemas/user.schema';
@@ -32,6 +33,7 @@ export class MemoryProcessor extends WorkerHost implements OnModuleInit {
     private readonly summaryService: SummaryService,
     private readonly entityExtractionService: EntityExtractionService,
     private readonly ragService: RagService,
+    private readonly memoryFilterService: MemoryFilterService,
     private readonly chatService: ChatService,
     @InjectModel(BotMemory.name)
     private readonly botMemoryModel: BotMemoryModel,
@@ -93,7 +95,12 @@ export class MemoryProcessor extends WorkerHost implements OnModuleInit {
     const totalToFetch =
       MEMORY_DEFAULTS.SHORT_TERM_WINDOW_SIZE +
       MEMORY_DEFAULTS.SUMMARY_BATCH_SIZE;
-    const allMessages = await this.getRecentMessages(channelId, totalToFetch);
+    const rawMessages = await this.getRecentMessages(channelId, totalToFetch);
+
+    // 内容质量过滤 + PII 脱敏
+    const allMessages = this.memoryFilterService.sanitizePII(
+      await this.memoryFilterService.filterMessages(rawMessages),
+    );
 
     if (allMessages.length <= MEMORY_DEFAULTS.SHORT_TERM_WINDOW_SIZE) {
       memory.interactionsSinceSummary = 0;

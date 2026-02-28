@@ -9,6 +9,7 @@ import {
 import { ChatService } from '../../chat/chat.service';
 import { EntityExtractionService } from './entity-extraction.service';
 import { RagService } from './rag.service';
+import { MemoryFilterService } from './memory-filter.service';
 import { MemoryProducer } from '../memory.producer';
 import { UserDocument } from '../../user/schemas/user.schema';
 
@@ -29,6 +30,7 @@ export class MemoryService {
     private readonly chatService: ChatService,
     private readonly entityExtractionService: EntityExtractionService,
     private readonly ragService: RagService,
+    private readonly memoryFilterService: MemoryFilterService,
     private readonly memoryProducer: MemoryProducer,
     private readonly logger: AppLogger,
   ) {}
@@ -146,14 +148,26 @@ export class MemoryService {
         });
       }
 
-      // 获取最近的消息用于 Entity Extraction 和 RAG
-      const recentMessages = await this.getRecentMessages(channelId, 10);
+      // 获取最近的消息，然后通过 MemoryFilterService 过滤
+      const rawMessages = await this.getRecentMessages(channelId, 10);
 
-      if (userId && userName && recentMessages.length > 0) {
-        const userMessages = recentMessages.filter(
+      // 内容质量过滤
+      const filtered =
+        await this.memoryFilterService.filterMessages(rawMessages);
+      if (filtered.length === 0) return;
+
+      // PII 脱敏
+      const sanitized = this.memoryFilterService.sanitizePII(filtered);
+
+      // Entity Extraction（带语义密度校验）
+      if (userId && userName && sanitized.length > 0) {
+        const userMessages = sanitized.filter(
           (m) => m.role === 'user' && m.author === userName,
         );
-        if (userMessages.length > 0) {
+        if (
+          userMessages.length > 0 &&
+          (await this.memoryFilterService.hasSemanticDensity(userMessages))
+        ) {
           await this.memoryProducer.enqueueExtractEntities({
             botId,
             channelId,
@@ -165,13 +179,22 @@ export class MemoryService {
         }
       }
 
-      if (recentMessages.length > 0) {
-        await this.memoryProducer.enqueueEmbedConversation({
-          botId,
-          channelId,
-          guildId,
-          messages: recentMessages,
-        });
+      // RAG Embedding（带重要性评分过滤）
+      if (sanitized.length > 0) {
+        const scored =
+          await this.memoryFilterService.scoreImportance(sanitized);
+        const worthEmbedding = scored
+          .filter((r) => r.tier !== 'low')
+          .map((r) => r.message);
+
+        if (worthEmbedding.length > 0) {
+          await this.memoryProducer.enqueueEmbedConversation({
+            botId,
+            channelId,
+            guildId,
+            messages: worthEmbedding,
+          });
+        }
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
@@ -184,7 +207,7 @@ export class MemoryService {
 
   async clearMemory(botId: string, channelId: string): Promise<void> {
     await this.botMemoryModel.deleteOne({ botId, channelId });
-    await this.ragService.deleteByChannel(botId, channelId).catch(() => {});
+    await this.ragService.deleteByChannel(botId, channelId).catch(() => { /* empty */ });
     this.logger.log(
       `[MemoryService] Cleared memory for bot ${botId} in channel ${channelId}`,
     );
@@ -192,7 +215,7 @@ export class MemoryService {
 
   async clearGuildMemory(botId: string, guildId: string): Promise<void> {
     const result = await this.botMemoryModel.deleteMany({ botId, guildId });
-    await this.ragService.deleteByBot(botId).catch(() => {});
+    await this.ragService.deleteByBot(botId).catch(() => { /* empty */ });
     this.logger.log(
       `[MemoryService] Cleared ${result.deletedCount} memory records for bot ${botId} in guild ${guildId}`,
     );
