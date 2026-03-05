@@ -17,6 +17,7 @@ import {
   PERMISSIONOVERWRITE,
   PermissionUtil,
   MEMBER_EVENT,
+  GUILD_EVENT,
 } from '@discord-platform/shared';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 import Redis from 'ioredis';
@@ -100,6 +101,7 @@ export class MemberService {
   // 通过自增 Guild 权限版本号，废弃所有旧权限缓存
   async invalidateGuildPermissions(guildId: string): Promise<void> {
     await this.redisClient.incr(RedisKeys.guildPermVersion(guildId));
+    this.eventEmitter.emit(GUILD_EVENT.PERMISSIONS_INVALIDATED, { guildId });
     this.logger.log('Guild permissions invalidated', { guildId });
   }
 

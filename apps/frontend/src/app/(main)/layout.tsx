@@ -6,6 +6,7 @@ import { useIsAuthenticated } from '@/hooks/use-auth';
 import { useAuthStore } from '@/stores/auth-store';
 import GuildSidebar from '@/components/layout/guild-sidebar';
 import ChannelSidebar from '@/components/layout/channel-sidebar';
+import { SocketProvider } from '@/providers/socket-provider';
 
 export default function MainLayout({
   children,
@@ -36,15 +37,17 @@ export default function MainLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
-      {/* Guild Sidebar (left) */}
-      <GuildSidebar />
+    <SocketProvider>
+      <div className="flex h-screen overflow-hidden bg-gray-100">
+        {/* Guild Sidebar (left) */}
+        <GuildSidebar />
 
-      {/* Channel Sidebar (middle) */}
-      <ChannelSidebar />
+        {/* Channel Sidebar (middle) */}
+        <ChannelSidebar />
 
-      {/* Main Content Area (right) */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
-    </div>
+        {/* Main Content Area (right) */}
+        <main className="flex-1 overflow-y-auto">{children}</main>
+      </div>
+    </SocketProvider>
   );
 }

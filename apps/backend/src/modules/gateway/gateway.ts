@@ -15,6 +15,7 @@ import {
   createMessageDTOSchema,
   JwtPayload,
   SOCKET_EVENT,
+  GUILD_EVENT,
 } from '@discord-platform/shared';
 import { SocketKeys } from '../../common/constants/socket-keys.constant';
 import {
@@ -24,6 +25,7 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 import { GlobalWsExceptionFilter } from './filters/ws-exception.filter';
@@ -31,6 +33,7 @@ import { ChatService } from '../chat/chat.service';
 import { ChannelService } from '../channel/channel.service';
 import { WsThrottlerGuard } from '../../common/guards/ws-throttler.guard';
 import { UnreadService } from '../unread/unread.service';
+import { MemberService } from '../member/member.service';
 
 @WebSocketGateway({
   cors: {
@@ -51,6 +54,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly chatService: ChatService,
     private readonly channelService: ChannelService,
     private readonly unreadService: UnreadService,
+    private readonly memberService: MemberService,
   ) {}
 
   // 在 Connection 阶段，Guard 还没有被触发，需要手动注入
@@ -211,5 +215,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     await client.leave(voiceRoom);
     return { status: 'left', channelId: payload.channelId };
+  }
+
+  // 广播权限禁用消息，触发刷新
+  @OnEvent(GUILD_EVENT.PERMISSIONS_INVALIDATED)
+  async handleGuildPermissionsInvalidated(payload: { guildId: string }) {
+    try {
+      const members = await this.memberService.getGuildMembers(payload.guildId);
+      for (const member of members) {
+        if (member.user) {
+          const userId = String(member.user._id || member.user);
+          this.server
+            .to(SocketKeys.userRoom(userId))
+            .emit(SOCKET_EVENT.PERMISSIONS_UPDATE, {
+              guildId: payload.guildId,
+            });
+        }
+      }
+    } catch {
+      // Ignore error
+    }
   }
 }

@@ -15,6 +15,7 @@ import {
 } from '@discord-platform/shared';
 import { PERMISSIONS_KEY } from '../decorators/permission.decorator';
 import { GuildService } from '../../modules/guild/guild.service';
+import { ChannelService } from '../../modules/channel/channel.service';
 
 @Injectable()
 export class PermissionGuard implements CanActivate {
@@ -22,6 +23,7 @@ export class PermissionGuard implements CanActivate {
     private reflector: Reflector,
     private memberService: MemberService,
     private guildService: GuildService,
+    private channelService: ChannelService,
     private jwtService: JwtService,
   ) {}
 
@@ -54,11 +56,29 @@ export class PermissionGuard implements CanActivate {
 
     const pathParam = Array.isArray(params.path) ? params.path : [];
 
-    const guildId =
+    let guildId =
       (typeof params.guildId === 'string' ? params.guildId : undefined) ||
       (typeof body.guildId === 'string' ? body.guildId : undefined) ||
       (typeof query.guildId === 'string' ? query.guildId : undefined) ||
       (typeof pathParam[1] === 'string' ? pathParam[1] : undefined);
+
+    const channelId =
+      (typeof params.channelId === 'string' ? params.channelId : undefined) ||
+      (typeof body.channelId === 'string' ? body.channelId : undefined) ||
+      (typeof query.channelId === 'string' ? query.channelId : undefined) ||
+      (typeof pathParam[1] === 'string' && pathParam[0] === 'channels'
+        ? pathParam[1]
+        : undefined);
+
+    // 从 channel 解析 guildId
+    if (!guildId && channelId) {
+      try {
+        const channel = await this.channelService.getChannelById(channelId);
+        guildId = (channel.guild as { toString(): string }).toString();
+      } catch {
+        throw new ForbiddenException('Channel not found');
+      }
+    }
 
     if (!guildId) {
       throw new ForbiddenException(
@@ -76,14 +96,6 @@ export class PermissionGuard implements CanActivate {
     if (guild.owner?.toString() === user.sub) {
       return true;
     }
-
-    const channelId =
-      (typeof params.channelId === 'string' ? params.channelId : undefined) ||
-      (typeof body.channelId === 'string' ? body.channelId : undefined) ||
-      (typeof query.channelId === 'string' ? query.channelId : undefined) ||
-      (typeof pathParam[1] === 'string' && pathParam[0] === 'channels'
-        ? pathParam[1]
-        : undefined);
 
     const isMember = await this.memberService.isMemberInGuild(
       guildId,

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Message, messageSchema } from './schemas/message.schema';
@@ -6,6 +6,7 @@ import { Channel, channelSchema } from '../channel/schemas/channel.schema';
 import { ChannelModule } from '../channel/channel.module';
 import { ChatController } from './chat.controller';
 import { MemberModule } from '../member/member.module';
+import { GuildModule } from '../guild/guild.module';
 import { MessageProducer } from './message.producer';
 
 @Module({
@@ -16,6 +17,7 @@ import { MessageProducer } from './message.producer';
     ]),
     MemberModule,
     ChannelModule,
+    forwardRef(() => GuildModule),
   ],
   providers: [ChatService, MessageProducer],
   exports: [ChatService, MessageProducer],

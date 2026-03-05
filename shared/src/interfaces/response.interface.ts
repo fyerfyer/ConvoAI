@@ -77,6 +77,12 @@ export interface ChannelResponse {
   parentId?: string;
   createdAt: string;
   updatedAt: string;
+  permissionOverwrites?: {
+    id: string;
+    type: number;
+    allow: number;
+    deny: number;
+  }[];
 }
 
 export interface ChannelListResponse {

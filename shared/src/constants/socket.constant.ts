@@ -15,6 +15,9 @@ export const SOCKET_EVENT = {
   // Unread tracking
   UNREAD_UPDATE: 'unreadUpdate',
   MARK_READ: 'markRead',
+
+  // Permissions tracking
+  PERMISSIONS_UPDATE: 'permissionsUpdate',
 } as const;
 
 export type SocketEvent = (typeof SOCKET_EVENT)[keyof typeof SOCKET_EVENT];

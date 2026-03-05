@@ -367,6 +367,12 @@ export class ChannelService {
       parentId: channel.parentId?.toString(),
       createdAt: channel.createdAt?.toISOString(),
       updatedAt: channel.updatedAt?.toISOString(),
+      permissionOverwrites: channel.permissionOverwrites?.map((ow) => ({
+        id: ow.id,
+        type: ow.type,
+        allow: ow.allow,
+        deny: ow.deny,
+      })),
     };
   }
 }

@@ -111,7 +111,7 @@ export default function ChannelSidebar() {
   useGuildUnread(guildId);
 
   // Permissions
-  const { canManageRoles } = usePermissions(guildId);
+  const { canManageRoles, canManageGuild } = usePermissions(guildId);
   const activeBots = bots.filter((b) => b.status === BOT_STATUS.ACTIVE);
   const unreadByChannel = useUnreadStore((state) => state.unreadByChannel);
 
@@ -493,17 +493,19 @@ export default function ChannelSidebar() {
         )}
 
         {/* Create Channel Button */}
-        <div className="p-2 border-t border-gray-700">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start text-gray-400 hover:text-white hover:bg-gray-700"
-            onClick={() => setCreateChannelOpen(true)}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Channel
-          </Button>
-        </div>
+        {canManageGuild && (
+          <div className="p-2 border-t border-gray-700">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-gray-400 hover:text-white hover:bg-gray-700"
+              onClick={() => setCreateChannelOpen(true)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Channel
+            </Button>
+          </div>
+        )}
 
         {/* Voice Status Bar */}
         <VoiceStatusBar />
@@ -528,6 +530,7 @@ export default function ChannelSidebar() {
         channel={contextMenu?.channel ?? null}
         position={contextMenu?.position ?? null}
         categories={categories}
+        canManageGuild={canManageGuild}
         onClose={() => setContextMenu(null)}
         onRename={(channel) => setRenameChannel(channel)}
         onMove={handleMove}

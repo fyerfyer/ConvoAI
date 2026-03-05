@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtGuard } from '../../common/guards/jwt.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermissions } from '../../common/decorators/permission.decorator';
 import { ChatService } from './chat.service';
 import {
   ApiResponse,
@@ -20,12 +22,13 @@ import {
   JwtPayload,
   MessageListResponse,
   MessageResponse,
+  PERMISSIONS,
 } from '@discord-platform/shared';
 import { User } from '../../common/decorators/user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
 
 @Controller('channels/:channelId/messages')
-@UseGuards(JwtGuard)
+@UseGuards(JwtGuard, PermissionGuard)
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
@@ -34,6 +37,7 @@ export class ChatController {
     medium: { limit: 30, ttl: 10000 },
   })
   @Post()
+  @RequirePermissions(PERMISSIONS.SEND_MESSAGES)
   async createMessage(
     @User() user: JwtPayload,
     @Body(new ZodValidationPipe(createMessageDTOSchema))
@@ -53,6 +57,7 @@ export class ChatController {
   }
 
   @Get()
+  @RequirePermissions(PERMISSIONS.VIEW_CHANNELS)
   async getMessages(
     @Param('channelId') channelId: string,
     @Query('limit') limit?: number,
@@ -77,6 +82,7 @@ export class ChatController {
     long: { limit: 10, ttl: 60000 },
   })
   @Post('attachments/presign')
+  @RequirePermissions(PERMISSIONS.SEND_MESSAGES)
   async getAttachmentPresignedUrl(
     @User() user: JwtPayload,
     @Param('channelId') channelId: string,

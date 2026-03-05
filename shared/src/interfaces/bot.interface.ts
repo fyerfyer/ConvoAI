@@ -186,6 +186,7 @@ export interface UnreadInfo {
 
 export interface UnreadUpdatePayload {
   channelId: string;
+  guildId?: string;
   count: number;
   lastMessageId: string;
   lastMessageAt: string;

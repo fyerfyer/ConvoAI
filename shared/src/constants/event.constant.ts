@@ -22,6 +22,12 @@ export const MEMBER_EVENT = {
 
 export type MemberEvent = (typeof MEMBER_EVENT)[keyof typeof MEMBER_EVENT];
 
+export const GUILD_EVENT = {
+  PERMISSIONS_INVALIDATED: 'guild.permissions.invalidated',
+} as const;
+
+export type GuildEvent = (typeof GUILD_EVENT)[keyof typeof GUILD_EVENT];
+
 export interface MemberEventPayload {
   guildId: string;
   userId: string;

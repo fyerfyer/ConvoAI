@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +20,8 @@ import {
   UpdateChannelDTO,
   createChannelSchema,
   updateChannelSchema,
+  PermissionOverwriteDTO,
+  permissionOverwriteSchema,
   ApiResponse,
   ChannelResponse,
 } from '@discord-platform/shared';
@@ -81,6 +84,26 @@ export class ChannelController {
     return {
       statusCode: HttpStatus.OK,
       message: 'Channel deleted successfully',
+    };
+  }
+
+  @Put(':channelId/permissions')
+  @RequirePermissions(PERMISSIONS.MANAGE_GUILD)
+  async setPermissionOverwrite(
+    @User() user: JwtPayload,
+    @Param('channelId') channelId: string,
+    @Body(new ZodValidationPipe(permissionOverwriteSchema))
+    dto: PermissionOverwriteDTO,
+  ): Promise<ApiResponse<ChannelResponse>> {
+    const channel = await this.channelService.addPermissionOverwrite(
+      channelId,
+      user.sub,
+      dto,
+    );
+    return {
+      data: this.channelService.toChannelResponse(channel),
+      statusCode: HttpStatus.OK,
+      message: 'Permission overwrite updated successfully',
     };
   }
 }

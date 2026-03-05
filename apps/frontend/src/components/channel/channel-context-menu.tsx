@@ -8,6 +8,7 @@ interface ChannelContextMenuProps {
   channel: ChannelResponse | null;
   position: { x: number; y: number } | null;
   categories: ChannelResponse[];
+  canManageGuild: boolean;
   onClose: () => void;
   onRename: (channel: ChannelResponse) => void;
   onMove: (channel: ChannelResponse, categoryId: string | null) => void;
@@ -19,6 +20,7 @@ export default function ChannelContextMenu({
   channel,
   position,
   categories,
+  canManageGuild,
   onClose,
   onRename,
   onMove,
@@ -60,65 +62,71 @@ export default function ChannelContextMenu({
       }}
     >
       {/* Rename */}
-      <button
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
-        onClick={() => {
-          onRename(channel);
-          onClose();
-        }}
-      >
-        <Edit2 className="h-4 w-4" />
-        Rename Channel
-      </button>
-
-      {/* Move to Category */}
-      <div className="relative">
+      {canManageGuild && (
         <button
           className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
-          onMouseEnter={() => setShowMoveSubmenu(true)}
-          onMouseLeave={() => setShowMoveSubmenu(false)}
-          onClick={() => setShowMoveSubmenu(!showMoveSubmenu)}
+          onClick={() => {
+            onRename(channel);
+            onClose();
+          }}
         >
-          <FolderInput className="h-4 w-4" />
-          Move to Category
+          <Edit2 className="h-4 w-4" />
+          Rename Channel
         </button>
+      )}
 
-        {showMoveSubmenu && (
-          <div
-            className="absolute left-full top-0 ml-1 min-w-[160px] rounded-md border border-gray-600 bg-gray-800 p-1 shadow-lg"
+      {/* Move to Category */}
+      {canManageGuild && (
+        <div className="relative">
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
             onMouseEnter={() => setShowMoveSubmenu(true)}
             onMouseLeave={() => setShowMoveSubmenu(false)}
+            onClick={() => setShowMoveSubmenu(!showMoveSubmenu)}
           >
-            {/* Uncategorized option */}
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
-              onClick={() => {
-                onMove(channel, null);
-                onClose();
-              }}
-            >
-              No Category
-            </button>
+            <FolderInput className="h-4 w-4" />
+            Move to Category
+          </button>
 
-            {categories.map((cat) => (
+          {showMoveSubmenu && (
+            <div
+              className="absolute left-full top-0 ml-1 min-w-[160px] rounded-md border border-gray-600 bg-gray-800 p-1 shadow-lg"
+              onMouseEnter={() => setShowMoveSubmenu(true)}
+              onMouseLeave={() => setShowMoveSubmenu(false)}
+            >
+              {/* Uncategorized option */}
               <button
-                key={cat.id}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                disabled={channel.parentId === cat.id}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
                 onClick={() => {
-                  onMove(channel, cat.id);
+                  onMove(channel, null);
                   onClose();
                 }}
               >
-                {cat.name}
-                {channel.parentId === cat.id && (
-                  <span className="ml-auto text-xs text-gray-500">current</span>
-                )}
+                No Category
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={channel.parentId === cat.id}
+                  onClick={() => {
+                    onMove(channel, cat.id);
+                    onClose();
+                  }}
+                >
+                  {cat.name}
+                  {channel.parentId === cat.id && (
+                    <span className="ml-auto text-xs text-gray-500">
+                      current
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Manage Bots */}
       {onManageBots && (
@@ -135,19 +143,21 @@ export default function ChannelContextMenu({
       )}
 
       {/* Separator */}
-      <div className="my-1 h-px bg-gray-700" />
+      {canManageGuild && <div className="my-1 h-px bg-gray-700" />}
 
       {/* Delete */}
-      <button
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-        onClick={() => {
-          onDelete(channel);
-          onClose();
-        }}
-      >
-        <Trash2 className="h-4 w-4" />
-        Delete Channel
-      </button>
+      {canManageGuild && (
+        <button
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-red-400 hover:bg-red-500 hover:text-white transition-colors"
+          onClick={() => {
+            onDelete(channel);
+            onClose();
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete Channel
+        </button>
+      )}
     </div>
   );
 }

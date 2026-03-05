@@ -335,8 +335,10 @@ export class BotService {
       throw new ForbiddenException('Only the guild owner can delete bots');
     }
 
+    // !! 由于 populate userId 可能会变成 user
+    const botUserId = bot.userId._id || bot.userId;
     // 移除用户与 Bot 配置
-    await this.userModel.findByIdAndDelete(bot.userId);
+    await this.userModel.findByIdAndDelete(botUserId);
     await this.botModel.findByIdAndDelete(botId);
 
     this.logger.log(`Bot ${botId} deleted from guild ${guild._id}`);

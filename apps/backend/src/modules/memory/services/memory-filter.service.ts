@@ -88,7 +88,7 @@ export class MemoryFilterService implements OnModuleInit {
       );
     } else {
       this.logger.log(
-        '[MemoryFilterService] LLM filtering disabled – using rule-based fallback',
+        '[MemoryFilterService] LLM filtering disabled, using rule-based fallback',
       );
     }
   }

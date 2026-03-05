@@ -7,6 +7,7 @@ import { Guild, guildSchema } from '../guild/schemas/guild.schema';
 import { Channel, channelSchema } from '../channel/schemas/channel.schema';
 import { User, userSchema } from '../user/schemas/user.schema';
 import { GuildModule } from '../guild/guild.module';
+import { ChannelModule } from '../channel/channel.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { GuildModule } from '../guild/guild.module';
       { name: User.name, schema: userSchema },
     ]),
     forwardRef(() => GuildModule),
+    forwardRef(() => ChannelModule),
   ],
   providers: [MemberService],
   controllers: [MemberController],

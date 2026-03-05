@@ -10,6 +10,10 @@ import {
   Volume2,
   Shield,
   ShieldCheck,
+  ShieldOff,
+  ShieldAlert,
+  EyeOff,
+  Eye,
   ChevronRight,
   Clock,
 } from 'lucide-react';
@@ -33,6 +37,8 @@ import {
   MemberResponse,
   GuildResponse,
   RoleResponse,
+  PERMISSIONS,
+  PERMISSIONOVERWRITE,
 } from '@discord-platform/shared';
 import {
   useKickMember,
@@ -42,6 +48,9 @@ import {
 import { useAddRoleToMember, useRemoveRoleFromMember } from '@/hooks/use-role';
 import { useCurrentUser } from '@/hooks/use-auth';
 import { usePermissions } from '@/hooks/use-permission';
+import { useSetChannelPermissionOverwrite } from '@/hooks/use-channel-permission';
+import { useGuildStore } from '@/stores/guild-store';
+import { toast } from '@/hooks/use-toast';
 
 interface MemberCardProps {
   member: MemberResponse;
@@ -68,14 +77,15 @@ const MUTE_DURATIONS = [
 
 export default function MemberCard({ member, guild }: MemberCardProps) {
   const currentUser = useCurrentUser();
-  const { canKickMembers, canMuteMembers, canManageRoles } = usePermissions(
-    guild.id,
-  );
+  const { canKickMembers, canMuteMembers, canManageRoles, canManageGuild } =
+    usePermissions(guild.id);
   const kickMemberMutation = useKickMember();
   const muteMemberMutation = useMuteMember();
   const unmuteMemberMutation = useUnmuteMember();
   const addRoleMutation = useAddRoleToMember();
   const removeRoleMutation = useRemoveRoleFromMember();
+  const setChannelPermOverwrite = useSetChannelPermissionOverwrite();
+  const activeChannel = useGuildStore((s) => s.activeChannel);
   const [kickDialogOpen, setKickDialogOpen] = useState(false);
   const [muteSubmenuOpen, setMuteSubmenuOpen] = useState(false);
   const [roleSubmenuOpen, setRoleSubmenuOpen] = useState(false);
@@ -98,6 +108,26 @@ export default function MemberCard({ member, guild }: MemberCardProps) {
     .filter((r) => r.name !== '@everyone')
     .sort((a, b) => b.position - a.position);
   const memberRoleIds = new Set(member.roles);
+
+  // Check if the member has an admin role
+  const adminRole = availableRoles.find(
+    (r) => (r.permissions & PERMISSIONS.ADMINISTRATOR) !== 0,
+  );
+  const memberHasAdmin = adminRole && memberRoleIds.has(adminRole.id);
+
+  const canToggleAdmin = canManageRoles && !isCurrentUser && !isOwner;
+  const canDenyChannelAccess =
+    canManageGuild && !isCurrentUser && !isOwner && !!activeChannel;
+
+  let isChannelAccessDenied = false;
+  if (activeChannel?.permissionOverwrites) {
+    const ow = activeChannel.permissionOverwrites.find(
+      (o) => o.id === member.userId && o.type === PERMISSIONOVERWRITE.MEMBER,
+    );
+    if (ow && (ow.deny & PERMISSIONS.VIEW_CHANNELS) !== 0) {
+      isChannelAccessDenied = true;
+    }
+  }
 
   const handleKick = () => {
     kickMemberMutation.mutate(
@@ -136,6 +166,67 @@ export default function MemberCard({ member, guild }: MemberCardProps) {
         roleId: role.id,
       });
     }
+  };
+
+  const handleToggleAdmin = () => {
+    if (!adminRole) {
+      toast({
+        variant: 'destructive',
+        title: 'No Admin Role',
+        description:
+          'No role with Administrator permission exists. Create one in Guild Settings first.',
+      });
+      setContextMenu(null);
+      return;
+    }
+    if (memberHasAdmin) {
+      removeRoleMutation.mutate(
+        {
+          guildId: guild.id,
+          userId: member.userId,
+          roleId: adminRole.id,
+        },
+        { onSuccess: () => setContextMenu(null) },
+      );
+    } else {
+      addRoleMutation.mutate(
+        {
+          guildId: guild.id,
+          userId: member.userId,
+          roleId: adminRole.id,
+        },
+        { onSuccess: () => setContextMenu(null) },
+      );
+    }
+  };
+
+  const handleToggleChannelAccess = () => {
+    if (!activeChannel) return;
+
+    // Toggle logic: If currently denied, we remove the deny bit. Else we add the deny bit.
+    setChannelPermOverwrite.mutate(
+      {
+        channelId: activeChannel.id,
+        guildId: guild.id,
+        data: {
+          id: member.userId,
+          type: PERMISSIONOVERWRITE.MEMBER,
+          allow: 0,
+          deny: isChannelAccessDenied ? 0 : PERMISSIONS.VIEW_CHANNELS,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: isChannelAccessDenied ? 'Access Restored' : 'Access Denied',
+            description: `${displayName} can ${
+              isChannelAccessDenied ? 'now' : 'no longer'
+            } view #${activeChannel.name}`,
+          });
+          setContextMenu(null);
+        },
+      },
+    );
   };
 
   const handleMention = () => {
@@ -267,6 +358,54 @@ export default function MemberCard({ member, guild }: MemberCardProps) {
           className="fixed z-[100] w-44 rounded-md border border-gray-600 bg-gray-800 p-1 shadow-lg"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
+          {/* ── Quick Admin Toggle ── */}
+          {canToggleAdmin && (
+            <button
+              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors ${
+                memberHasAdmin
+                  ? 'text-orange-400 hover:bg-orange-500 hover:text-white'
+                  : 'text-indigo-400 hover:bg-indigo-500 hover:text-white'
+              }`}
+              onClick={handleToggleAdmin}
+            >
+              {memberHasAdmin ? (
+                <>
+                  <ShieldOff className="h-4 w-4" />
+                  Remove Admin
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="h-4 w-4" />
+                  Make Admin
+                </>
+              )}
+            </button>
+          )}
+
+          {/* ── Toggle Channel Access ── */}
+          {canDenyChannelAccess && (
+            <button
+              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors text-left ${
+                isChannelAccessDenied
+                  ? 'text-green-400 hover:bg-green-500 hover:text-white'
+                  : 'text-red-400 hover:bg-red-500 hover:text-white'
+              }`}
+              onClick={handleToggleChannelAccess}
+            >
+              {isChannelAccessDenied ? (
+                <>
+                  <Eye className="h-4 w-4 shrink-0" />
+                  <span>Allow Channel Access</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="h-4 w-4 shrink-0" />
+                  <span>Deny Channel Access</span>
+                </>
+              )}
+            </button>
+          )}
+
           {/* Mention */}
           <button
             className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"

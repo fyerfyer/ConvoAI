@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
-import { Hash, Volume2, Users, Bot } from 'lucide-react';
+import { Hash, Volume2, Users, Bot, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import MessageList from './message-list';
 import MessageInput from './message-input';
@@ -39,7 +39,7 @@ export default function ChatArea({
 }: ChatAreaProps) {
   const user = useCurrentUser();
   const { data: guildMembers = [] } = useMembers(guildId);
-  const { data: fetchedMessages, isLoading } = useMessages(channelId);
+  const { data: fetchedMessages, isLoading, error } = useMessages(channelId);
   const {
     joinRoom,
     leaveRoom,
@@ -80,7 +80,7 @@ export default function ChatArea({
       leaveRoom(channelId);
       setCurrentChannel(null);
     };
-  }, [channelId, joinRoom, leaveRoom, setCurrentChannel]);
+  }, [channelId, joinRoom, leaveRoom, setCurrentChannel, markRead]);
 
   // Get messages from store (includes real-time additions)
   const messages: MessageResponse[] = useMemo(() => {
@@ -182,13 +182,21 @@ export default function ChatArea({
       )}
 
       {/* Messages */}
-      <MessageList
-        messages={messages}
-        channelName={channelName}
-        channelId={channelId}
-        isLoading={isLoading}
-        currentUserId={user?.id}
-      />
+      {error && (error as { statusCode?: number }).statusCode === 403 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+          <ShieldAlert className="h-16 w-16 mb-4 text-red-500 opacity-80" />
+          <h3 className="text-xl font-semibold mb-2 text-white">No Access</h3>
+          <p>You do not have permission to view this channel.</p>
+        </div>
+      ) : (
+        <MessageList
+          messages={messages}
+          channelName={channelName}
+          channelId={channelId}
+          isLoading={isLoading}
+          currentUserId={user?.id}
+        />
+      )}
 
       {/* Typing Indicator — fixed height to prevent layout shift */}
       <div className="h-6 px-4 flex items-center text-xs text-gray-400">

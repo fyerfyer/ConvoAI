@@ -14,6 +14,7 @@ import { Inject, forwardRef, OnModuleInit } from '@nestjs/common';
 import { SOCKET_EVENT } from '@discord-platform/shared';
 import { UserDocument } from '../user/schemas/user.schema';
 import { ChannelService } from '../channel/channel.service';
+import { SocketKeys } from '../../common/constants/socket-keys.constant';
 import { HealthRegistry } from '../health/health.registry';
 
 export interface MessageBroadcastData {
@@ -89,27 +90,42 @@ export class MessageProcessor extends WorkerHost implements OnModuleInit {
       if (channel) {
         const guildId = String(channel.guild);
         const members = await this.memberService.getGuildMembers(guildId);
-        const memberUserIds = members.map((m) => String(m.user));
+        const memberUserIds = members.map((m) => String(m.user?._id || m.user));
 
-        await this.unreadService.incrementUnread(
-          roomId,
-          messageId,
-          message.createdAt?.toISOString() || new Date().toISOString(),
-          memberUserIds,
-          senderId,
+        // 获取最近访问 socket 的成员
+        const socketsInRoom = await this.gateway.server
+          .in(roomId)
+          .fetchSockets();
+        const userIdsInRoom = new Set(
+          socketsInRoom
+            .map((s) => (s.data as { user?: { sub?: string } }).user?.sub)
+            .filter(Boolean),
         );
 
-        // 在每个 room 中广播未读消息更新
-        for (const userId of memberUserIds) {
-          if (userId === senderId) continue;
+        const usersToIncrement = memberUserIds.filter(
+          (id) => id !== senderId && !userIdsInRoom.has(id),
+        );
+
+        if (usersToIncrement.length > 0) {
+          await this.unreadService.incrementUnread(
+            roomId,
+            messageId,
+            message.createdAt?.toISOString() || new Date().toISOString(),
+            usersToIncrement,
+            senderId,
+          );
+        }
+
+        for (const userId of usersToIncrement) {
           const unread = await this.unreadService.getUnreadForChannel(
             userId,
             roomId,
           );
           this.gateway.server
-            .to(`user:${userId}`)
+            .to(SocketKeys.userRoom(userId))
             .emit(SOCKET_EVENT.UNREAD_UPDATE, {
               channelId: roomId,
+              guildId: guildId,
               count: unread.count,
               lastMessageId: messageId,
               lastMessageAt:
