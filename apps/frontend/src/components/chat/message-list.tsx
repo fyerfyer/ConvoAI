@@ -14,6 +14,9 @@ interface MessageListProps {
   currentUserId?: string;
   hasOlderMessages?: boolean;
   onLoadMore?: () => void;
+  onPinMessage?: (messageId: string) => void;
+  onUnpinMessage?: (messageId: string) => void;
+  canManageMessages?: boolean;
 }
 
 export default function MessageList({
@@ -24,6 +27,9 @@ export default function MessageList({
   currentUserId,
   hasOlderMessages = false,
   onLoadMore,
+  onPinMessage,
+  onUnpinMessage,
+  canManageMessages,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -126,6 +132,9 @@ export default function MessageList({
               key={message.id}
               message={message}
               currentUserId={currentUserId}
+              onPin={onPinMessage}
+              onUnpin={onUnpinMessage}
+              canManageMessages={canManageMessages}
             />
           ))}
 

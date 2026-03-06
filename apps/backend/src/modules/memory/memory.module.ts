@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HttpModule } from '@nestjs/axios';
 
@@ -33,7 +33,7 @@ import { AutoModModule } from '../automod/automod.module';
       timeout: 30_000,
       maxRedirects: 3,
     }),
-    ChatModule,
+    forwardRef(() => ChatModule),
     MemberModule,
     AutoModModule,
   ],

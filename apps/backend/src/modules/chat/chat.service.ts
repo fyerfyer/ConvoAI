@@ -18,7 +18,9 @@ import {
   BUCKETS,
   CreateMessageDTO,
   MAX_ATTACHMENT_SIZE,
+  MAX_PINNED_MESSAGES,
   MESSAGE_TYPE,
+  SearchMessagesDTO,
 } from '@discord-platform/shared';
 import { MessageProducer } from './message.producer';
 import { ClientSession, Types, Document } from 'mongoose';
@@ -55,6 +57,21 @@ export class ChatService {
       throw new NotFoundException('Channel not found');
     }
 
+    // Mute enforcement: check if user is currently muted in this guild
+    if (this.autoModService && channelDoc.guild) {
+      const guildId = channelDoc.guild.toString();
+      const muteStatus = await this.autoModService.isUserMuted(
+        guildId,
+        senderId,
+      );
+      if (muteStatus.muted) {
+        const until = muteStatus.mutedUntil?.toISOString() ?? 'unknown';
+        throw new ForbiddenException(
+          `You are muted in this server until ${until}`,
+        );
+      }
+    }
+
     // AutoMod 检查
     if (this.autoModService && channelDoc.guild && createMessageDTO.content) {
       const guildId = channelDoc.guild.toString();
@@ -73,7 +90,7 @@ export class ChatService {
       );
 
       if (!verdict.allowed) {
-        await this.autoModService.executeActions(
+        const escalationResult = await this.autoModService.executeActions(
           guildId,
           senderId,
           channelId,
@@ -81,9 +98,18 @@ export class ChatService {
         );
 
         if (verdict.actions.includes(AUTOMOD_ACTION.BLOCK_MESSAGE)) {
-          throw new ForbiddenException(
-            `Message blocked by AutoMod: ${verdict.reason}`,
-          );
+          let message = `Message blocked by AutoMod: ${verdict.reason}`;
+          if (escalationResult) {
+            if (escalationResult.action === 'mute') {
+              const mins = Math.round(
+                (escalationResult.muteDurationMs ?? 0) / 60_000,
+              );
+              message += ` | You have been muted for ${mins} minutes (${escalationResult.violationCount} violations).`;
+            } else if (escalationResult.action === 'kick') {
+              message += ` | You have been kicked from the server (${escalationResult.violationCount} violations).`;
+            }
+          }
+          throw new ForbiddenException(message);
         }
       }
     } else {
@@ -133,6 +159,7 @@ export class ChatService {
     return this.messageModel
       .findById(messageId)
       .populate('sender', 'name avatar isBot')
+      .populate('pinnedBy', 'name avatar isBot')
       .populate({
         path: 'replyTo',
         select: 'content sender',
@@ -159,6 +186,7 @@ export class ChatService {
       .sort({ _id: -1 })
       .limit(limit)
       .populate('sender', 'name avatar isBot')
+      .populate('pinnedBy', 'name avatar isBot')
       .populate({
         path: 'replyTo',
         select: 'content sender',
@@ -176,6 +204,7 @@ export class ChatService {
     return this.messageModel
       .findById(message._id)
       .populate('sender', 'name avatar isBot')
+      .populate('pinnedBy', 'name avatar isBot')
       .populate({
         path: 'replyTo',
         select: 'content sender',
@@ -309,6 +338,22 @@ export class ChatService {
         timestamp: emb.timestamp?.toISOString(),
       })),
       replyTo: replyToResponse,
+      pinned: populatedMessage.pinned || false,
+      pinnedBy: populatedMessage.pinnedBy
+        ? populatedMessage.pinnedBy instanceof Document
+          ? {
+              id: (
+                populatedMessage.pinnedBy as unknown as UserDocument
+              )._id.toString(),
+              name: (populatedMessage.pinnedBy as unknown as UserDocument).name,
+              avatar: (populatedMessage.pinnedBy as unknown as UserDocument)
+                .avatar,
+              isBot: (populatedMessage.pinnedBy as unknown as UserDocument)
+                .isBot,
+            }
+          : undefined
+        : undefined,
+      pinnedAt: populatedMessage.pinnedAt?.toISOString(),
       createdAt: populatedMessage.createdAt?.toISOString(),
       updatedAt: populatedMessage.updatedAt?.toISOString(),
     };
@@ -355,5 +400,169 @@ export class ChatService {
     const fileUrl = this.s3Service.getPublicUrl(BUCKETS.PRIVATE, key);
 
     return { uploadUrl, fileUrl, key };
+  }
+
+  async pinMessage(
+    channelId: string,
+    messageId: string,
+    userId: string,
+  ): Promise<MessageDocument> {
+    const channelObjectId = new Types.ObjectId(channelId);
+    const messageObjectId = new Types.ObjectId(messageId);
+
+    const message = await this.messageModel.findOne({
+      _id: messageObjectId,
+      channelId: channelObjectId,
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found in this channel');
+    }
+
+    if (message.pinned) {
+      throw new BadRequestException('Message is already pinned');
+    }
+
+    // Check pin limit
+    const pinnedCount = await this.messageModel.countDocuments({
+      channelId: channelObjectId,
+      pinned: true,
+    });
+
+    if (pinnedCount >= MAX_PINNED_MESSAGES) {
+      throw new BadRequestException(
+        `Cannot pin more than ${MAX_PINNED_MESSAGES} messages in a channel`,
+      );
+    }
+
+    message.pinned = true;
+    message.pinnedBy = new Types.ObjectId(userId) as any;
+    message.pinnedAt = new Date();
+    await message.save();
+
+    return this.messageModel
+      .findById(messageObjectId)
+      .populate('sender', 'name avatar isBot')
+      .populate('pinnedBy', 'name avatar isBot')
+      .populate({
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      })
+      .exec() as Promise<MessageDocument>;
+  }
+
+  async unpinMessage(
+    channelId: string,
+    messageId: string,
+  ): Promise<MessageDocument> {
+    const channelObjectId = new Types.ObjectId(channelId);
+    const messageObjectId = new Types.ObjectId(messageId);
+
+    const message = await this.messageModel.findOne({
+      _id: messageObjectId,
+      channelId: channelObjectId,
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found in this channel');
+    }
+
+    if (!message.pinned) {
+      throw new BadRequestException('Message is not pinned');
+    }
+
+    message.pinned = false;
+    message.pinnedBy = undefined;
+    message.pinnedAt = undefined;
+    await message.save();
+
+    return this.messageModel
+      .findById(messageObjectId)
+      .populate('sender', 'name avatar isBot')
+      .populate({
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      })
+      .exec() as Promise<MessageDocument>;
+  }
+
+  async getPinnedMessages(channelId: string): Promise<MessageDocument[]> {
+    return this.messageModel
+      .find({
+        channelId: new Types.ObjectId(channelId),
+        pinned: true,
+      })
+      .sort({ pinnedAt: -1 })
+      .limit(MAX_PINNED_MESSAGES)
+      .populate('sender', 'name avatar isBot')
+      .populate('pinnedBy', 'name avatar isBot')
+      .populate({
+        path: 'replyTo',
+        select: 'content sender',
+        populate: { path: 'sender', select: 'name avatar isBot' },
+      })
+      .exec();
+  }
+
+  async searchMessages(
+    channelId: string,
+    dto: SearchMessagesDTO,
+  ): Promise<{ messages: MessageDocument[]; total: number }> {
+    const channelObjectId = new Types.ObjectId(channelId);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: any = {
+      channelId: channelObjectId,
+    };
+
+    const useFulltext = dto.mode === 'fulltext';
+    if (useFulltext) {
+      filter.$text = { $search: dto.query };
+    } else {
+      filter.content = { $regex: dto.query, $options: 'i' };
+    }
+
+    if (dto.authorId) {
+      filter.sender = new Types.ObjectId(dto.authorId);
+    }
+
+    if (dto.before || dto.after) {
+      filter.createdAt = {};
+      if (dto.before) {
+        filter.createdAt.$lte = new Date(dto.before);
+      }
+      if (dto.after) {
+        filter.createdAt.$gte = new Date(dto.after);
+      }
+    }
+
+    const sortOption = useFulltext
+      ? { score: { $meta: 'textScore' as const } }
+      : { createdAt: -1 as const };
+
+    const projection = useFulltext
+      ? { score: { $meta: 'textScore' as const } }
+      : {};
+
+    const [messages, total] = await Promise.all([
+      this.messageModel
+        .find(filter, projection)
+        .sort(sortOption)
+        .skip(dto.offset)
+        .limit(dto.limit)
+        .populate('sender', 'name avatar isBot')
+        .populate('pinnedBy', 'name avatar isBot')
+        .populate({
+          path: 'replyTo',
+          select: 'content sender',
+          populate: { path: 'sender', select: 'name avatar isBot' },
+        })
+        .exec(),
+      this.messageModel.countDocuments(filter),
+    ]);
+
+    return { messages, total };
   }
 }

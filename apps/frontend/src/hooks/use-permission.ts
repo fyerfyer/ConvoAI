@@ -54,6 +54,7 @@ export function usePermissions(guildId: string | undefined) {
       canEmbedLinks: has(PERMISSIONS.EMBED_LINKS),
       canConnect: has(PERMISSIONS.CONNECT),
       canSpeak: has(PERMISSIONS.SPEAK),
+      canManageMessages: has(PERMISSIONS.MANAGE_MESSAGES),
       hasPerm: has,
     };
   }, [permissions, isLoading]);

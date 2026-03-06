@@ -40,8 +40,22 @@ export class Message {
   @Prop({ type: Boolean, default: false })
   isEdited: boolean;
 
+  @Prop({ type: Boolean, default: false })
+  pinned: boolean;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  pinnedBy?: PopulatedDoc<UserDocument & Document>;
+
+  @Prop({ type: Date, required: false })
+  pinnedAt?: Date;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export const messageSchema = SchemaFactory.createForClass(Message);
+
+// 搜索索引
+messageSchema.index({ content: 'text' });
+// Pinned 消息
+messageSchema.index({ channelId: 1, pinned: 1, pinnedAt: -1 });

@@ -39,3 +39,22 @@ export const attachmentPresignedUrlDTOSchema = z.object({
 export type AttachmentPresignedUrlDTO = z.infer<
   typeof attachmentPresignedUrlDTOSchema
 >;
+
+export const SEARCH_MODE = {
+  KEYWORD: 'keyword',
+  FULLTEXT: 'fulltext',
+} as const;
+
+export type SearchMode = (typeof SEARCH_MODE)[keyof typeof SEARCH_MODE];
+
+export const searchMessagesDTOSchema = z.object({
+  query: z.string().min(1).max(200),
+  mode: z.enum([SEARCH_MODE.KEYWORD, SEARCH_MODE.FULLTEXT]).default(SEARCH_MODE.KEYWORD),
+  authorId: z.string().optional(),
+  before: z.string().optional(), // ISO date string
+  after: z.string().optional(), // ISO date string
+  limit: z.coerce.number().min(1).max(50).default(25),
+  offset: z.coerce.number().min(0).default(0),
+});
+
+export type SearchMessagesDTO = z.infer<typeof searchMessagesDTOSchema>;

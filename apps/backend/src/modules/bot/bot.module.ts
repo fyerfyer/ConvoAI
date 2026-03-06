@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HttpModule } from '@nestjs/axios';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -47,7 +47,7 @@ import { BotStreamProducer } from './bot-stream.producer';
       maxRedirects: 3,
     }),
     ScheduleModule.forRoot(),
-    ChatModule,
+    forwardRef(() => ChatModule),
     MemoryModule,
   ],
   providers: [

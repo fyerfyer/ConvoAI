@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   Download,
   FileIcon,
@@ -10,6 +10,9 @@ import {
   Mic,
   Terminal,
   Sparkles,
+  Pin,
+  PinOff,
+  Copy,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import EmbedRenderer from './embed-renderer';
@@ -22,6 +25,9 @@ import { cn } from '@/lib/utils';
 interface MessageItemProps {
   message: MessageResponse;
   currentUserId?: string;
+  onPin?: (messageId: string) => void;
+  onUnpin?: (messageId: string) => void;
+  canManageMessages?: boolean;
 }
 
 function formatTimestamp(isoString: string): string {
@@ -69,6 +75,9 @@ function isBotWarning(content: string): boolean {
 export default function MessageItem({
   message,
   currentUserId,
+  onPin,
+  onUnpin,
+  canManageMessages,
 }: MessageItemProps) {
   const timestamp = useMemo(
     () => formatTimestamp(message.createdAt),
@@ -92,8 +101,36 @@ export default function MessageItem({
     return <SystemMessage message={message} />;
   }
 
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Close context menu on outside click or scroll
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    const handleScroll = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('click', handleClick);
+    document.addEventListener('scroll', handleScroll, true);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('scroll', handleScroll, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu]);
+
   return (
     <div
+      onContextMenu={handleContextMenu}
       className={cn(
         'group relative flex items-start py-2 pl-4 pr-12 hover:bg-gray-800/30 mt-0.5 first:mt-0 transition-colors',
         // Own message - subtle indigo highlight
@@ -170,6 +207,12 @@ export default function MessageItem({
           <span className="text-[11px] text-gray-500 select-none">
             {timestamp}
           </span>
+          {message.pinned && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400">
+              <Pin className="h-2.5 w-2.5" />
+              Pinned
+            </span>
+          )}
         </div>
 
         {/* Slash command display */}
@@ -218,6 +261,94 @@ export default function MessageItem({
           </div>
         )}
       </div>
+
+      {/* Hover action toolbar */}
+      {canManageMessages && (onPin || onUnpin) && (
+        <div className="absolute top-0 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-gray-900/90 rounded border border-gray-700/50 px-1 py-0.5 -translate-y-1/2">
+          {message.pinned
+            ? onUnpin && (
+                <button
+                  onClick={() => onUnpin(message.id)}
+                  className="p-1 text-yellow-400 hover:text-yellow-300 hover:bg-gray-700/50 rounded transition-colors"
+                  title="Unpin message"
+                >
+                  <Pin className="h-3.5 w-3.5" />
+                </button>
+              )
+            : onPin && (
+                <button
+                  onClick={() => onPin(message.id)}
+                  className="p-1 text-gray-400 hover:text-yellow-400 hover:bg-gray-700/50 rounded transition-colors"
+                  title="Pin message"
+                >
+                  <Pin className="h-3.5 w-3.5" />
+                </button>
+              )}
+        </div>
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[180px] rounded-md bg-gray-900 border border-gray-700 py-1 shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:bg-indigo-500/20 hover:text-white transition-colors"
+            onClick={() => {
+              navigator.clipboard.writeText(message.content);
+              setContextMenu(null);
+            }}
+          >
+            <Copy className="h-4 w-4" />
+            Copy Text
+          </button>
+          {canManageMessages && (
+            <>
+              <div className="my-1 border-t border-gray-700/50" />
+              {message.pinned ? (
+                onUnpin && (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-yellow-400 hover:bg-yellow-500/10 hover:text-yellow-300 transition-colors"
+                    onClick={() => {
+                      onUnpin(message.id);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <PinOff className="h-4 w-4" />
+                    Unpin Message
+                  </button>
+                )
+              ) : (
+                onPin && (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:bg-indigo-500/20 hover:text-white transition-colors"
+                    onClick={() => {
+                      onPin(message.id);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Pin className="h-4 w-4" />
+                    Pin Message
+                  </button>
+                )
+              )}
+            </>
+          )}
+          <button
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:bg-indigo-500/20 hover:text-white transition-colors"
+            onClick={() => {
+              navigator.clipboard.writeText(message.id);
+              setContextMenu(null);
+            }}
+          >
+            <Copy className="h-4 w-4" />
+            Copy Message ID
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { MemberModule } from '../member/member.module';
 import { GuildModule } from '../guild/guild.module';
 import { MessageProducer } from './message.producer';
 import { AutoModModule } from '../automod/automod.module';
+import { GatewayModule } from '../gateway/gateway.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AutoModModule } from '../automod/automod.module';
     ChannelModule,
     forwardRef(() => GuildModule),
     AutoModModule,
+    forwardRef(() => GatewayModule),
   ],
   providers: [ChatService, MessageProducer],
   exports: [ChatService, MessageProducer],

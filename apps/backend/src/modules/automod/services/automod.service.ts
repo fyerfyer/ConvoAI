@@ -1,5 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import Redis from 'ioredis';
 import { Types } from 'mongoose';
 
@@ -8,6 +9,8 @@ import {
   AUTOMOD_ACTION,
   AUTOMOD_DEFAULTS,
   AUTOMOD_TRIGGER,
+  ESCALATION_ACTION,
+  MEMBER_EVENT,
   AutoModActionType,
   AutoModTriggerType,
 } from '@discord-platform/shared';
@@ -20,6 +23,12 @@ import {
   RedisKeys,
   CACHE_TTL,
 } from '../../../common/constants/redis-keys.constant';
+
+export interface EscalationResult {
+  action: string;
+  muteDurationMs?: number;
+  violationCount: number;
+}
 
 export interface AutoModVerdict {
   allowed: boolean;
@@ -40,6 +49,18 @@ export interface AutoModRule {
   exemptRoles?: string[];
 }
 
+export interface EscalationThreshold {
+  count: number;
+  action: string;
+  muteDurationMs?: number;
+}
+
+export interface EscalationConfig {
+  enabled: boolean;
+  windowMs?: number;
+  thresholds: EscalationThreshold[];
+}
+
 @Injectable()
 export class AutoModService {
   constructor(
@@ -49,6 +70,7 @@ export class AutoModService {
     @InjectModel(AutoModLog.name)
     private readonly autoModLogModel: AutoModLogModel,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly eventEmitter: EventEmitter2,
     private readonly logger: AppLogger,
   ) {}
 
@@ -87,8 +109,14 @@ export class AutoModService {
       return { allowed: true, actions: [] };
     }
 
+    let hasToxicRule = false;
+
     for (const rule of rules) {
       if (!rule.enabled) continue;
+
+      if (rule.trigger === AUTOMOD_TRIGGER.TOXIC_CONTENT) {
+        hasToxicRule = true;
+      }
 
       let verdict: AutoModVerdict | null = null;
 
@@ -96,6 +124,8 @@ export class AutoModService {
         case AUTOMOD_TRIGGER.KEYWORD:
           verdict = this.checkKeywordRule(rule, content);
           break;
+
+        // TODO：这两个前端还没实现，先放着
         case AUTOMOD_TRIGGER.SPAM:
           verdict = await this.checkSpamRule(
             guildId,
@@ -118,6 +148,22 @@ export class AutoModService {
       }
     }
 
+    // 永远运行 baseline toxicity check，不管有没有额外规则
+    if (!hasToxicRule) {
+      this.logger.debug(
+        '[AutoMod] No explicit toxic_content rule, running baseline toxicity check',
+      );
+      const baselineVerdict = await this.baselineToxicityCheck(
+        guildId,
+        channelId,
+        userId,
+        content,
+      );
+      if (!baselineVerdict.allowed) {
+        return baselineVerdict;
+      }
+    }
+
     this.logger.debug(`[AutoMod] All rules passed, message allowed`);
     return { allowed: true, actions: [] };
   }
@@ -127,7 +173,7 @@ export class AutoModService {
     userId: string,
     channelId: string,
     verdict: AutoModVerdict,
-  ): Promise<void> {
+  ): Promise<EscalationResult | null> {
     for (const action of verdict.actions) {
       switch (action) {
         case AUTOMOD_ACTION.MUTE_USER: {
@@ -144,6 +190,11 @@ export class AutoModService {
           this.logger.log(
             `[AutoMod] Muted user ${userId} in guild ${guildId} until ${mutedUntil.toISOString()}`,
           );
+          this.eventEmitter.emit(MEMBER_EVENT.MEMBER_MUTED, {
+            guildId,
+            userId,
+            mutedUntil: mutedUntil.toISOString(),
+          });
           break;
         }
         case AUTOMOD_ACTION.WARN_USER:
@@ -156,11 +207,139 @@ export class AutoModService {
           break;
       }
     }
+
+    // 检查是否需要执行其他操作
+    return this.checkAndExecuteEscalation(guildId, userId);
   }
 
-  async getConfig(
+  private async countRecentViolations(
     guildId: string,
-  ): Promise<{ enabled: boolean; rules: AutoModRule[] }> {
+    userId: string,
+    windowMs: number,
+  ): Promise<number> {
+    const since = new Date(Date.now() - windowMs);
+    return this.autoModLogModel.countDocuments({
+      guildId: new Types.ObjectId(guildId),
+      userId: new Types.ObjectId(userId),
+      createdAt: { $gte: since },
+    });
+  }
+
+  private async checkAndExecuteEscalation(
+    guildId: string,
+    userId: string,
+  ): Promise<EscalationResult | null> {
+    const guild = await this.guildModel
+      .findById(guildId)
+      .select('autoModConfig.escalation owner')
+      .lean();
+
+    const escalation = guild?.autoModConfig?.escalation;
+    this.logger.log(
+      `[AutoMod] Escalation config: enabled=${escalation?.enabled} thresholds=${JSON.stringify(escalation?.thresholds ?? [])} owner=${guild?.owner?.toString()}`,
+    );
+
+    if (!escalation?.enabled || !escalation.thresholds?.length) {
+      this.logger.debug(
+        `[AutoMod] Escalation skipped: enabled=${escalation?.enabled} thresholds=${escalation?.thresholds?.length ?? 0}`,
+      );
+      return null;
+    }
+
+    // Don't escalate against the guild owner
+    if (guild?.owner?.toString() === userId) {
+      this.logger.debug(
+        `[AutoMod] Skipping escalation for guild owner ${userId}`,
+      );
+      return null;
+    }
+
+    const windowMs =
+      escalation.windowMs ?? AUTOMOD_DEFAULTS.ESCALATION_WINDOW_MS;
+    const violationCount = await this.countRecentViolations(
+      guildId,
+      userId,
+      windowMs,
+    );
+
+    this.logger.log(
+      `[AutoMod] Escalation check: user=${userId} violations=${violationCount} window=${windowMs}ms thresholds=${JSON.stringify(escalation.thresholds)}`,
+    );
+
+    const sorted = [...escalation.thresholds].sort((a, b) => b.count - a.count);
+
+    for (const threshold of sorted) {
+      if (violationCount >= threshold.count) {
+        this.logger.log(
+          `[AutoMod] Escalation threshold matched: count=${threshold.count} action=${threshold.action} violations=${violationCount}`,
+        );
+        if (threshold.action === ESCALATION_ACTION.KICK) {
+          this.logger.log(
+            `[AutoMod] Escalation: Kicking user ${userId} from guild ${guildId} (${violationCount} violations)`,
+          );
+          await this.memberModel.deleteOne({
+            guild: new Types.ObjectId(guildId),
+            user: new Types.ObjectId(userId),
+          });
+          return { action: ESCALATION_ACTION.KICK, violationCount };
+        } else if (threshold.action === ESCALATION_ACTION.MUTE) {
+          const muteDuration =
+            threshold.muteDurationMs ?? AUTOMOD_DEFAULTS.MUTE_DURATION_MS;
+          const mutedUntil = new Date(Date.now() + muteDuration);
+          this.logger.log(
+            `[AutoMod] Escalation: Muting user ${userId} in guild ${guildId} until ${mutedUntil.toISOString()} (${violationCount} violations)`,
+          );
+          await this.memberModel.updateOne(
+            {
+              guild: new Types.ObjectId(guildId),
+              user: new Types.ObjectId(userId),
+            },
+            { $set: { mutedUntil } },
+          );
+          this.eventEmitter.emit(MEMBER_EVENT.MEMBER_MUTED, {
+            guildId,
+            userId,
+            mutedUntil: mutedUntil.toISOString(),
+          });
+          return {
+            action: ESCALATION_ACTION.MUTE,
+            muteDurationMs: muteDuration,
+            violationCount,
+          };
+        }
+        break;
+      }
+    }
+
+    this.logger.debug(
+      `[AutoMod] No escalation threshold matched for ${violationCount} violations`,
+    );
+    return null;
+  }
+
+  async isUserMuted(
+    guildId: string,
+    userId: string,
+  ): Promise<{ muted: boolean; mutedUntil?: Date }> {
+    const member = await this.memberModel
+      .findOne({
+        guild: new Types.ObjectId(guildId),
+        user: new Types.ObjectId(userId),
+      })
+      .select('mutedUntil')
+      .lean();
+
+    if (member?.mutedUntil && new Date(member.mutedUntil) > new Date()) {
+      return { muted: true, mutedUntil: new Date(member.mutedUntil) };
+    }
+    return { muted: false };
+  }
+
+  async getConfig(guildId: string): Promise<{
+    enabled: boolean;
+    rules: AutoModRule[];
+    escalation?: EscalationConfig;
+  }> {
     const guild = await this.guildModel
       .findById(guildId)
       .select('autoModConfig')
@@ -169,19 +348,27 @@ export class AutoModService {
     return {
       enabled: guild?.autoModConfig?.enabled ?? false,
       rules: guild?.autoModConfig?.rules ?? [],
+      escalation: guild?.autoModConfig?.escalation ?? {
+        enabled: false,
+        thresholds: [],
+      },
     };
   }
 
   async updateConfig(
     guildId: string,
-    config: { enabled: boolean; rules: AutoModRule[] },
+    config: {
+      enabled: boolean;
+      rules: AutoModRule[];
+      escalation?: EscalationConfig;
+    },
   ): Promise<void> {
     await this.guildModel.updateOne(
       { _id: new Types.ObjectId(guildId) },
       { $set: { autoModConfig: config } },
     );
     this.logger.log(
-      `[AutoMod] Updated config for guild ${guildId}: enabled=${config.enabled}, rules=${config.rules.length}`,
+      `[AutoMod] Updated config for guild ${guildId}: enabled=${config.enabled}, rules=${config.rules.length}, escalation=${config.escalation?.enabled ?? false}`,
     );
   }
 
@@ -269,28 +456,23 @@ export class AutoModService {
     userId: string,
     content: string,
   ): Promise<AutoModVerdict | null> {
-    // Use Redis to track recent messages per user per channel
     const key = RedisKeys.automodSpam(guildId, channelId, userId);
     const now = Date.now();
 
-    // Store message hash + timestamp
     const msgHash = simpleHash(content);
     const entry = `${msgHash}:${now}`;
 
-    // Add the new entry and get all entries
     await this.redis.rpush(key, entry);
     await this.redis.expire(key, CACHE_TTL.AUTOMOD_SPAM);
 
     const entries = await this.redis.lrange(key, 0, -1);
 
-    // Filter to recent window
     const windowMs = AUTOMOD_DEFAULTS.SPAM_WINDOW_MS;
     const recentEntries = entries.filter((e) => {
       const ts = parseInt(e.split(':')[1], 10);
       return now - ts < windowMs;
     });
 
-    // Count duplicate messages in window
     const hashCounts = new Map<string, number>();
     for (const e of recentEntries) {
       const hash = e.split(':')[0];
@@ -340,10 +522,6 @@ export class AutoModService {
     };
   }
 
-  /**
-   * Baseline toxicity check that runs even when guild automod is not configured.
-   * Uses the multilingual BERT model — handles English, Chinese, and 13 other languages.
-   */
   private async baselineToxicityCheck(
     guildId: string,
     channelId: string,
@@ -407,9 +585,6 @@ export class AutoModService {
   }
 }
 
-/**
- * Simple non-cryptographic hash for deduplication.
- */
 function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {

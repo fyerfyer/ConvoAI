@@ -14,6 +14,9 @@ export const PERMISSIONS = {
   CONNECT: 1 << 7, // 128
   SPEAK: 1 << 8, // 256
 
+  // 消息管理权限
+  MANAGE_MESSAGES: 1 << 12, // 4096
+
   // 管理权限
   KICK_MEMBERS: 1 << 9, // 512
   BAN_MEMBERS: 1 << 10, // 1024

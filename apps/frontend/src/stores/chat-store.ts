@@ -14,6 +14,11 @@ interface ChatState {
   setMessages: (channelId: string, messages: MessageResponse[]) => void;
   addMessage: (message: MessageResponse) => void;
   prependMessages: (channelId: string, messages: MessageResponse[]) => void;
+  updateMessage: (
+    channelId: string,
+    messageId: string,
+    updates: Partial<MessageResponse>,
+  ) => void;
   setTypingUser: (channelId: string, userId: string) => void;
   removeTypingUser: (channelId: string, userId: string) => void;
   clearChannel: (channelId: string) => void;
@@ -59,6 +64,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messagesByChannel: {
           ...state.messagesByChannel,
           [channelId]: [...newMessages, ...existing],
+        },
+      };
+    }),
+
+  updateMessage: (channelId, messageId, updates) =>
+    set((state) => {
+      const existing = state.messagesByChannel[channelId];
+      if (!existing) return state;
+      return {
+        messagesByChannel: {
+          ...state.messagesByChannel,
+          [channelId]: existing.map((m) =>
+            m.id === messageId ? { ...m, ...updates } : m,
+          ),
         },
       };
     }),

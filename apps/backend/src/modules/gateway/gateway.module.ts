@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ChatGateway } from './gateway';
 import { GatewaySessionManager } from './gateway.session';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
@@ -11,7 +11,13 @@ import { MessageProcessor } from './message.processor';
 import { BotStreamProcessor } from './bot-stream.processor';
 
 @Module({
-  imports: [ChatModule, ChannelModule, BotModule, MemberModule, UnreadModule],
+  imports: [
+    forwardRef(() => ChatModule),
+    ChannelModule,
+    BotModule,
+    MemberModule,
+    UnreadModule,
+  ],
   providers: [
     ChatGateway,
     GatewaySessionManager,

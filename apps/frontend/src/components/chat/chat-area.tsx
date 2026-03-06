@@ -1,16 +1,27 @@
 'use client';
 
 import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
-import { Hash, Volume2, Users, Bot, ShieldAlert } from 'lucide-react';
+import {
+  Hash,
+  Volume2,
+  Users,
+  Bot,
+  ShieldAlert,
+  Pin,
+  Search,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import MessageList from './message-list';
 import MessageInput from './message-input';
-import { useMessages } from '@/hooks/use-chat';
+import PinnedMessagesPanel from './pinned-messages-panel';
+import SearchModal from './search-modal';
+import { useMessages, usePinMessage, useUnpinMessage } from '@/hooks/use-chat';
 import { useSocket } from '@/hooks/use-socket';
 import { useChatStore } from '@/stores/chat-store';
 import { useCurrentUser } from '@/hooks/use-auth';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { useMembers } from '@/hooks/use-member';
+import { usePermissions } from '@/hooks/use-permission';
 import VoiceChannelPanel from '@/components/voice/voice-channel-panel';
 import ChannelBotDialog from '@/components/bot/channel-bot-dialog';
 import {
@@ -52,6 +63,11 @@ export default function ChatArea({
   const prevChannelRef = useRef<string | null>(null);
   const { uploadFiles, isUploading } = useFileUpload(channelId);
   const [channelBotOpen, setChannelBotOpen] = useState(false);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { canManageMessages } = usePermissions(guildId);
+  const pinMutation = usePinMessage();
+  const unpinMutation = useUnpinMessage();
 
   // Sync fetched messages into store
   useEffect(() => {
@@ -135,99 +151,156 @@ export default function ChatArea({
     [channelId, sendTyping],
   );
 
+  const handlePinMessage = useCallback(
+    (messageId: string) => {
+      pinMutation.mutate({ channelId, messageId });
+    },
+    [channelId, pinMutation],
+  );
+
+  const handleUnpinMessage = useCallback(
+    (messageId: string) => {
+      unpinMutation.mutate({ channelId, messageId });
+    },
+    [channelId, unpinMutation],
+  );
+
   const isVoiceChannel = channelType === CHANNEL.GUILD_VOICE;
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-700 min-h-0">
-      {/* Channel Header */}
-      <div className="flex h-12 items-center justify-between px-4 shadow-md bg-gray-700 border-b border-gray-600">
-        <div className="flex items-center">
-          {isVoiceChannel ? (
-            <Volume2 className="mr-2 h-5 w-5 text-gray-400" />
-          ) : (
-            <Hash className="mr-2 h-5 w-5 text-gray-400" />
-          )}
-          <h3 className="font-semibold text-white">{channelName}</h3>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-gray-400 hover:text-white"
-            onClick={() => setChannelBotOpen(true)}
-            title="Manage Channel Bots"
-          >
-            <Bot className="h-5 w-5" />
-          </Button>
-          {showMemberToggle && (
+    <div className="flex-1 flex bg-gray-700 min-h-0">
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Channel Header */}
+        <div className="flex h-12 items-center justify-between px-4 shadow-md bg-gray-700 border-b border-gray-600">
+          <div className="flex items-center">
+            {isVoiceChannel ? (
+              <Volume2 className="mr-2 h-5 w-5 text-gray-400" />
+            ) : (
+              <Hash className="mr-2 h-5 w-5 text-gray-400" />
+            )}
+            <h3 className="font-semibold text-white">{channelName}</h3>
+          </div>
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-gray-400 hover:text-white"
-              onClick={onToggleMembers}
+              onClick={() => setSearchOpen(true)}
+              title="Search Messages"
             >
-              <Users className="h-5 w-5" />
+              <Search className="h-5 w-5" />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${pinnedOpen ? 'text-yellow-400' : 'text-gray-400'} hover:text-white`}
+              onClick={() => setPinnedOpen(!pinnedOpen)}
+              title="Pinned Messages"
+            >
+              <Pin className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-400 hover:text-white"
+              onClick={() => setChannelBotOpen(true)}
+              title="Manage Channel Bots"
+            >
+              <Bot className="h-5 w-5" />
+            </Button>
+            {showMemberToggle && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-gray-400 hover:text-white"
+                onClick={onToggleMembers}
+              >
+                <Users className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Voice Channel Panel */}
+        {isVoiceChannel && (
+          <VoiceChannelPanel
+            channelId={channelId}
+            channelName={channelName}
+            guildId={guildId}
+          />
+        )}
+
+        {/* Messages */}
+        {error && (error as { statusCode?: number }).statusCode === 403 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+            <ShieldAlert className="h-16 w-16 mb-4 text-red-500 opacity-80" />
+            <h3 className="text-xl font-semibold mb-2 text-white">No Access</h3>
+            <p>You do not have permission to view this channel.</p>
+          </div>
+        ) : (
+          <MessageList
+            messages={messages}
+            channelName={channelName}
+            channelId={channelId}
+            isLoading={isLoading}
+            currentUserId={user?.id}
+            onPinMessage={canManageMessages ? handlePinMessage : undefined}
+            onUnpinMessage={canManageMessages ? handleUnpinMessage : undefined}
+            canManageMessages={canManageMessages}
+          />
+        )}
+
+        {/* Typing Indicator — fixed height to prevent layout shift */}
+        <div className="h-6 px-4 flex items-center text-xs text-gray-400">
+          {currentTypingUsers.length > 0 && (
+            <span className="animate-pulse">
+              {currentTypingUsers.length === 1
+                ? 'Someone is typing...'
+                : `${currentTypingUsers.length} people are typing...`}
+            </span>
           )}
         </div>
-      </div>
 
-      {/* Voice Channel Panel */}
-      {isVoiceChannel && (
-        <VoiceChannelPanel
+        {/* Message Input */}
+        <MessageInput
+          channelId={channelId}
+          channelName={channelName}
+          guildId={guildId}
+          onSendMessage={handleSendMessage}
+          onTyping={handleTyping}
+          isUploading={isUploading}
+          onFilesSelected={handleFilesSelected}
+        />
+
+        {/* Channel Bot Management Dialog */}
+        <ChannelBotDialog
+          open={channelBotOpen}
+          onOpenChange={setChannelBotOpen}
           channelId={channelId}
           channelName={channelName}
           guildId={guildId}
         />
-      )}
 
-      {/* Messages */}
-      {error && (error as { statusCode?: number }).statusCode === 403 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-          <ShieldAlert className="h-16 w-16 mb-4 text-red-500 opacity-80" />
-          <h3 className="text-xl font-semibold mb-2 text-white">No Access</h3>
-          <p>You do not have permission to view this channel.</p>
-        </div>
-      ) : (
-        <MessageList
-          messages={messages}
-          channelName={channelName}
+        {/* Search Modal */}
+        <SearchModal
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
           channelId={channelId}
-          isLoading={isLoading}
+          channelName={channelName}
           currentUserId={user?.id}
         />
-      )}
-
-      {/* Typing Indicator — fixed height to prevent layout shift */}
-      <div className="h-6 px-4 flex items-center text-xs text-gray-400">
-        {currentTypingUsers.length > 0 && (
-          <span className="animate-pulse">
-            {currentTypingUsers.length === 1
-              ? 'Someone is typing...'
-              : `${currentTypingUsers.length} people are typing...`}
-          </span>
-        )}
       </div>
 
-      {/* Message Input */}
-      <MessageInput
-        channelId={channelId}
-        channelName={channelName}
-        guildId={guildId}
-        onSendMessage={handleSendMessage}
-        onTyping={handleTyping}
-        isUploading={isUploading}
-        onFilesSelected={handleFilesSelected}
-      />
-
-      {/* Channel Bot Management Dialog */}
-      <ChannelBotDialog
-        open={channelBotOpen}
-        onOpenChange={setChannelBotOpen}
-        channelId={channelId}
-        channelName={channelName}
-        guildId={guildId}
-      />
+      {/* Pinned Messages Panel */}
+      {pinnedOpen && (
+        <PinnedMessagesPanel
+          channelId={channelId}
+          channelName={channelName}
+          currentUserId={user?.id}
+          canManageMessages={canManageMessages}
+          onClose={() => setPinnedOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -18,6 +18,13 @@ export const SOCKET_EVENT = {
 
   // Permissions tracking
   PERMISSIONS_UPDATE: 'permissionsUpdate',
+
+  // Message pin events
+  MESSAGE_PINNED: 'messagePinned',
+  MESSAGE_UNPINNED: 'messageUnpinned',
+
+  // Member moderation events
+  MEMBER_MUTED: 'memberMuted',
 } as const;
 
 export type SocketEvent = (typeof SOCKET_EVENT)[keyof typeof SOCKET_EVENT];

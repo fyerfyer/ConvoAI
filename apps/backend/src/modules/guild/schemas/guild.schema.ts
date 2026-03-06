@@ -56,6 +56,23 @@ export class Guild {
         ],
         default: [],
       },
+      escalation: {
+        type: {
+          enabled: { type: Boolean, default: false },
+          windowMs: { type: Number },
+          thresholds: {
+            type: [
+              {
+                count: { type: Number, required: true },
+                action: { type: String, required: true },
+                muteDurationMs: Number,
+              },
+            ],
+            default: [],
+          },
+        },
+        default: { enabled: false, thresholds: [] },
+      },
     },
     default: {
       enabled: true,
@@ -67,6 +84,7 @@ export class Guild {
           actions: [AUTOMOD_ACTION.BLOCK_MESSAGE],
         },
       ],
+      escalation: { enabled: false, thresholds: [] },
     },
   })
   autoModConfig?: {
@@ -80,6 +98,15 @@ export class Guild {
       muteDurationMs?: number;
       exemptRoles?: string[];
     }>;
+    escalation?: {
+      enabled: boolean;
+      windowMs?: number;
+      thresholds: Array<{
+        count: number;
+        action: string;
+        muteDurationMs?: number;
+      }>;
+    };
   };
 
   createdAt?: Date;

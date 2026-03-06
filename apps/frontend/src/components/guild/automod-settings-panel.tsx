@@ -17,9 +17,12 @@ import {
   GuildResponse,
   AutoModRuleResponse,
   UpdateAutoModConfigDTO,
+  EscalationConfigResponse,
+  EscalationThresholdResponse,
   AUTOMOD_TRIGGER,
   AUTOMOD_ACTION,
   AUTOMOD_DEFAULTS,
+  ESCALATION_ACTION,
 } from '@discord-platform/shared';
 import {
   useAutoModConfig,
@@ -50,9 +53,15 @@ const ACTION_INFO: Record<string, { label: string }> = {
   [AUTOMOD_ACTION.WARN_USER]: { label: 'Warn User' },
 };
 
+const DEFAULT_ESCALATION_THRESHOLD: EscalationThresholdResponse = {
+  count: 3,
+  action: ESCALATION_ACTION.MUTE,
+  muteDurationMs: 30 * 60_000,
+};
+
 // ── Rule Editor ──
 
-function RuleEditor({
+function KeywordRuleEditor({
   rule,
   onChange,
   onRemove,
@@ -61,16 +70,6 @@ function RuleEditor({
   onChange: (updated: AutoModRuleResponse) => void;
   onRemove: () => void;
 }) {
-  const isKeyword = rule.trigger === AUTOMOD_TRIGGER.KEYWORD;
-  const isToxic = rule.trigger === AUTOMOD_TRIGGER.TOXIC_CONTENT;
-
-  const toggleAction = (action: string) => {
-    const actions = rule.actions.includes(action)
-      ? rule.actions.filter((a) => a !== action)
-      : [...rule.actions, action];
-    onChange({ ...rule, actions });
-  };
-
   return (
     <div className="rounded-lg bg-gray-700/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -81,11 +80,9 @@ function RuleEditor({
             className="data-[state=checked]:bg-indigo-500 data-[state=unchecked]:bg-gray-600"
           />
           <div>
-            <p className="text-sm font-medium text-white">
-              {TRIGGER_INFO[rule.trigger]?.label ?? rule.trigger}
-            </p>
+            <p className="text-sm font-medium text-white">Keyword Filter</p>
             <p className="text-xs text-gray-500">
-              {TRIGGER_INFO[rule.trigger]?.description}
+              Block messages containing specific words or phrases
             </p>
           </div>
         </div>
@@ -99,111 +96,232 @@ function RuleEditor({
         </Button>
       </div>
 
-      {/* Keyword-specific: keyword list */}
-      {isKeyword && (
-        <div>
-          <label className="text-xs font-semibold text-gray-400 uppercase">
-            Keywords (comma-separated)
-          </label>
-          <Input
-            value={(rule.keywords ?? []).join(', ')}
-            onChange={(e) =>
-              onChange({
-                ...rule,
-                keywords: e.target.value
-                  .split(',')
-                  .map((k) => k.trim())
-                  .filter(Boolean),
-              })
-            }
-            placeholder="badword, spam, scam"
-            className="mt-1 bg-gray-900 border-gray-600 text-white text-sm"
-          />
-        </div>
-      )}
-
-      {/* Toxic-specific: threshold slider */}
-      {isToxic && (
-        <div>
-          <label className="text-xs font-semibold text-gray-400 uppercase">
-            Toxicity Threshold:{' '}
-            {(
-              rule.toxicityThreshold ?? AUTOMOD_DEFAULTS.TOXICITY_THRESHOLD
-            ).toFixed(2)}
-          </label>
-          <input
-            type="range"
-            min={0.3}
-            max={0.95}
-            step={0.05}
-            value={
-              rule.toxicityThreshold ?? AUTOMOD_DEFAULTS.TOXICITY_THRESHOLD
-            }
-            onChange={(e) =>
-              onChange({
-                ...rule,
-                toxicityThreshold: parseFloat(e.target.value),
-              })
-            }
-            className="mt-1 w-full accent-indigo-500"
-          />
-          <div className="flex justify-between text-[10px] text-gray-500">
-            <span>Sensitive (0.3)</span>
-            <span>Strict (0.95)</span>
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
       <div>
-        <label className="text-xs font-semibold text-gray-400 uppercase mb-1 block">
-          Actions
+        <label className="text-xs font-semibold text-gray-400 uppercase">
+          Keywords (comma-separated)
         </label>
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(ACTION_INFO).map(([key, info]) => {
-            const active = rule.actions.includes(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => toggleAction(key)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  active
-                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
-                    : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500'
-                }`}
-              >
-                {info.label}
-              </button>
-            );
-          })}
+        <Input
+          value={(rule.keywords ?? []).join(', ')}
+          onChange={(e) =>
+            onChange({
+              ...rule,
+              keywords: e.target.value
+                .split(',')
+                .map((k) => k.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="badword, spam, scam"
+          className="mt-1 bg-gray-900 border-gray-600 text-white text-sm"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Escalation Editor ──
+
+const ESCALATION_ACTION_INFO: Record<string, string> = {
+  [ESCALATION_ACTION.MUTE]: 'Mute',
+  [ESCALATION_ACTION.KICK]: 'Kick',
+};
+
+const WINDOW_OPTIONS = [
+  { label: '1 hour', value: 60 * 60 * 1000 },
+  { label: '6 hours', value: 6 * 60 * 60 * 1000 },
+  { label: '12 hours', value: 12 * 60 * 60 * 1000 },
+  { label: '24 hours', value: 24 * 60 * 60 * 1000 },
+  { label: '3 days', value: 3 * 24 * 60 * 60 * 1000 },
+  { label: '7 days', value: 7 * 24 * 60 * 60 * 1000 },
+];
+
+function EscalationEditor({
+  escalation,
+  onChange,
+}: {
+  escalation: EscalationConfigResponse;
+  onChange: (updated: EscalationConfigResponse) => void;
+}) {
+  const addThreshold = () => {
+    const maxCount =
+      escalation.thresholds.length > 0
+        ? Math.max(...escalation.thresholds.map((t) => t.count))
+        : 0;
+    onChange({
+      ...escalation,
+      thresholds: [
+        ...escalation.thresholds,
+        {
+          count: maxCount + 3,
+          action: ESCALATION_ACTION.MUTE,
+          muteDurationMs: 30 * 60_000,
+        },
+      ],
+    });
+  };
+
+  const handleToggleEnabled = (enabled: boolean) => {
+    if (enabled && escalation.thresholds.length === 0) {
+      // Auto-create a default threshold when enabling escalation
+      onChange({
+        ...escalation,
+        enabled,
+        thresholds: [{ ...DEFAULT_ESCALATION_THRESHOLD }],
+      });
+    } else {
+      onChange({ ...escalation, enabled });
+    }
+  };
+
+  const updateThreshold = (
+    index: number,
+    updated: EscalationThresholdResponse,
+  ) => {
+    const next = [...escalation.thresholds];
+    next[index] = updated;
+    onChange({ ...escalation, thresholds: next });
+  };
+
+  const removeThreshold = (index: number) => {
+    onChange({
+      ...escalation,
+      thresholds: escalation.thresholds.filter((_, i) => i !== index),
+    });
+  };
+
+  return (
+    <div className="rounded-lg bg-gray-700/30 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={escalation.enabled}
+            onCheckedChange={handleToggleEnabled}
+            className="data-[state=checked]:bg-indigo-500 data-[state=unchecked]:bg-gray-600"
+          />
+          <div>
+            <p className="text-sm font-medium text-white">Escalation</p>
+            <p className="text-xs text-gray-500">
+              Automatically mute or kick users after repeated violations
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Mute duration (if mute action is selected) */}
-      {rule.actions.includes(AUTOMOD_ACTION.MUTE_USER) && (
-        <div>
-          <label className="text-xs font-semibold text-gray-400 uppercase">
-            Mute Duration (minutes)
-          </label>
-          <Input
-            type="number"
-            min={1}
-            max={1440}
-            value={Math.round(
-              (rule.muteDurationMs ?? AUTOMOD_DEFAULTS.MUTE_DURATION_MS) /
-                60_000,
+      {escalation.enabled && (
+        <>
+          {/* Time window */}
+          <div>
+            <label className="text-xs font-semibold text-gray-400 uppercase">
+              Time Window
+            </label>
+            <select
+              value={
+                escalation.windowMs ?? AUTOMOD_DEFAULTS.ESCALATION_WINDOW_MS
+              }
+              onChange={(e) =>
+                onChange({ ...escalation, windowMs: parseInt(e.target.value) })
+              }
+              className="mt-1 w-full rounded-md bg-gray-900 border border-gray-600 text-white text-sm px-3 py-1.5"
+            >
+              {WINDOW_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-500 mt-1">
+              Violations within this window are counted for escalation
+            </p>
+          </div>
+
+          {/* Thresholds */}
+          <div className="space-y-2">
+            {escalation.thresholds.map((threshold, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded-md bg-gray-800/60 p-2"
+              >
+                <span className="text-xs text-gray-400 whitespace-nowrap">
+                  After
+                </span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={threshold.count}
+                  onChange={(e) =>
+                    updateThreshold(i, {
+                      ...threshold,
+                      count: Math.max(1, parseInt(e.target.value) || 1),
+                    })
+                  }
+                  className="w-16 h-7 text-xs bg-gray-900 border-gray-600 text-white"
+                />
+                <span className="text-xs text-gray-400 whitespace-nowrap">
+                  violations →
+                </span>
+                <select
+                  value={threshold.action}
+                  onChange={(e) =>
+                    updateThreshold(i, { ...threshold, action: e.target.value })
+                  }
+                  className="rounded-md bg-gray-900 border border-gray-600 text-white text-xs px-2 py-1"
+                >
+                  {Object.entries(ESCALATION_ACTION_INFO).map(
+                    ([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
+                {threshold.action === ESCALATION_ACTION.MUTE && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-400">for</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10080}
+                      value={Math.round(
+                        (threshold.muteDurationMs ?? 30 * 60_000) / 60_000,
+                      )}
+                      onChange={(e) =>
+                        updateThreshold(i, {
+                          ...threshold,
+                          muteDurationMs:
+                            Math.max(1, parseInt(e.target.value) || 30) *
+                            60_000,
+                        })
+                      }
+                      className="w-16 h-7 text-xs bg-gray-900 border-gray-600 text-white"
+                    />
+                    <span className="text-xs text-gray-400">min</span>
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-gray-400 hover:text-red-400 hover:bg-red-500/10 ml-auto"
+                  onClick={() => removeThreshold(i)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+
+            {escalation.thresholds.length < 5 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={addThreshold}
+                className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white text-xs"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add Threshold
+              </Button>
             )}
-            onChange={(e) =>
-              onChange({
-                ...rule,
-                muteDurationMs:
-                  Math.max(1, parseInt(e.target.value) || 5) * 60_000,
-              })
-            }
-            className="mt-1 w-24 bg-gray-900 border-gray-600 text-white text-sm"
-          />
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -285,20 +403,13 @@ function AutoModLogsView({
 
 // ── New Rule Creator ──
 
-function newDefaultRule(trigger: string): AutoModRuleResponse {
-  const base: AutoModRuleResponse = {
+function newKeywordRule(): AutoModRuleResponse {
+  return {
     enabled: true,
-    trigger,
+    trigger: AUTOMOD_TRIGGER.KEYWORD,
+    keywords: [],
     actions: [AUTOMOD_ACTION.BLOCK_MESSAGE],
   };
-
-  if (trigger === AUTOMOD_TRIGGER.KEYWORD) {
-    base.keywords = [];
-  }
-  if (trigger === AUTOMOD_TRIGGER.TOXIC_CONTENT) {
-    base.toxicityThreshold = AUTOMOD_DEFAULTS.TOXICITY_THRESHOLD;
-  }
-  return base;
 }
 
 // ── Main Panel ──
@@ -317,40 +428,58 @@ export default function AutoModSettingsPanel({
   const updateMutation = useUpdateAutoModConfig();
 
   const [enabled, setEnabled] = useState(false);
-  const [rules, setRules] = useState<AutoModRuleResponse[]>([]);
+  // Only keyword rules are user-editable; non-keyword rules are preserved from server
+  const [keywordRules, setKeywordRules] = useState<AutoModRuleResponse[]>([]);
+  const [builtInRules, setBuiltInRules] = useState<AutoModRuleResponse[]>([]);
+  const [escalation, setEscalation] = useState<EscalationConfigResponse>({
+    enabled: false,
+    thresholds: [],
+  });
   const [dirty, setDirty] = useState(false);
 
   // Sync from server
   useEffect(() => {
     if (config) {
       setEnabled(config.enabled);
-      setRules(config.rules);
+      setKeywordRules(
+        config.rules.filter((r) => r.trigger === AUTOMOD_TRIGGER.KEYWORD),
+      );
+      setBuiltInRules(
+        config.rules.filter((r) => r.trigger !== AUTOMOD_TRIGGER.KEYWORD),
+      );
+      setEscalation(config.escalation ?? { enabled: false, thresholds: [] });
       setDirty(false);
     }
   }, [config]);
 
   const updateRule = (index: number, updated: AutoModRuleResponse) => {
-    const next = [...rules];
+    const next = [...keywordRules];
     next[index] = updated;
-    setRules(next);
+    setKeywordRules(next);
     setDirty(true);
   };
 
   const removeRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
+    setKeywordRules(keywordRules.filter((_, i) => i !== index));
     setDirty(true);
   };
 
-  const addRule = (trigger: string) => {
-    setRules([...rules, newDefaultRule(trigger)]);
+  const addKeywordRule = () => {
+    setKeywordRules([...keywordRules, newKeywordRule()]);
     setDirty(true);
   };
 
   const handleSave = () => {
+    // Merge user keyword rules with preserved built-in rules
+    const allRules = [...builtInRules, ...keywordRules];
     updateMutation.mutate(
       {
         guildId: guild.id,
-        data: { enabled, rules } as UpdateAutoModConfigDTO,
+        data: {
+          enabled,
+          rules: allRules,
+          escalation,
+        } as UpdateAutoModConfigDTO,
       },
       { onSuccess: () => setDirty(false) },
     );
@@ -359,16 +488,16 @@ export default function AutoModSettingsPanel({
   const handleReset = () => {
     if (config) {
       setEnabled(config.enabled);
-      setRules(config.rules);
+      setKeywordRules(
+        config.rules.filter((r) => r.trigger === AUTOMOD_TRIGGER.KEYWORD),
+      );
+      setBuiltInRules(
+        config.rules.filter((r) => r.trigger !== AUTOMOD_TRIGGER.KEYWORD),
+      );
+      setEscalation(config.escalation ?? { enabled: false, thresholds: [] });
       setDirty(false);
     }
   };
-
-  // Determine which triggers are not yet added
-  const usedTriggers = new Set(rules.map((r) => r.trigger));
-  const availableTriggers = Object.values(AUTOMOD_TRIGGER).filter(
-    (t) => !usedTriggers.has(t),
-  );
 
   if (view.type === 'logs') {
     return (
@@ -394,11 +523,11 @@ export default function AutoModSettingsPanel({
         <div>
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-indigo-400" />
-            AutoMod
+            Adding Rules
           </h3>
           <p className="text-sm text-gray-400">
-            Automatically moderate messages with keyword filters, anti-spam, and
-            AI toxicity detection.
+            Add custom keyword filters to block messages containing specific
+            words or phrases. Built-in rules (toxicity, spam) run automatically.
           </p>
         </div>
         <Button
@@ -430,41 +559,43 @@ export default function AutoModSettingsPanel({
         />
       </div>
 
-      {/* Rules */}
+      {/* Keyword Rules */}
       <div className="space-y-3">
-        {rules.map((rule, i) => (
-          <RuleEditor
-            key={`${rule.trigger}-${i}`}
+        {keywordRules.map((rule, i) => (
+          <KeywordRuleEditor
+            key={`keyword-${i}`}
             rule={rule}
             onChange={(updated) => updateRule(i, updated)}
             onRemove={() => removeRule(i)}
           />
         ))}
 
-        {rules.length === 0 && (
+        {keywordRules.length === 0 && (
           <p className="text-sm text-gray-500 text-center py-4">
-            No rules configured. Add a rule to get started.
+            No keyword rules added. Add a rule to get started.
           </p>
         )}
       </div>
 
-      {/* Add rule */}
-      {availableTriggers.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {availableTriggers.map((trigger) => (
-            <Button
-              key={trigger}
-              variant="outline"
-              size="sm"
-              onClick={() => addRule(trigger)}
-              className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              {TRIGGER_INFO[trigger]?.label ?? trigger}
-            </Button>
-          ))}
-        </div>
-      )}
+      {/* Add keyword rule */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={addKeywordRule}
+        className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add Keyword Rule
+      </Button>
+
+      {/* Escalation */}
+      <EscalationEditor
+        escalation={escalation}
+        onChange={(updated) => {
+          setEscalation(updated);
+          setDirty(true);
+        }}
+      />
 
       {/* Save bar */}
       {dirty && (

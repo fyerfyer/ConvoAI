@@ -170,12 +170,31 @@ export interface MessageResponse {
     content: string;
     author: IUserSummary;
   };
+  pinned?: boolean;
+  pinnedBy?: IUserSummary;
+  pinnedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface PinnedMessagesResponse {
+  messages: MessageResponse[];
+  count: number;
+}
+
+export interface SearchMessagesResponse {
+  messages: MessageResponse[];
+  total: number;
+}
+
 export interface MessageListResponse {
   messages: MessageResponse[];
+}
+
+export interface MessagePinEvent {
+  messageId: string;
+  channelId: string;
+  message: MessageResponse;
 }
 
 export interface BotResponse {
@@ -291,6 +310,18 @@ export interface ChannelSlashCommandsResponse {
 
 // ── AutoMod ──
 
+export interface EscalationThresholdResponse {
+  count: number;
+  action: string;
+  muteDurationMs?: number;
+}
+
+export interface EscalationConfigResponse {
+  enabled: boolean;
+  windowMs?: number;
+  thresholds: EscalationThresholdResponse[];
+}
+
 export interface AutoModRuleResponse {
   enabled: boolean;
   trigger: string;
@@ -304,6 +335,7 @@ export interface AutoModRuleResponse {
 export interface AutoModConfigResponse {
   enabled: boolean;
   rules: AutoModRuleResponse[];
+  escalation?: EscalationConfigResponse;
 }
 
 export interface AutoModLogResponse {

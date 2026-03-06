@@ -16,6 +16,7 @@ import {
   JwtPayload,
   SOCKET_EVENT,
   GUILD_EVENT,
+  MEMBER_EVENT,
 } from '@discord-platform/shared';
 import { SocketKeys } from '../../common/constants/socket-keys.constant';
 import {
@@ -230,6 +231,51 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             .emit(SOCKET_EVENT.PERMISSIONS_UPDATE, {
               guildId: payload.guildId,
             });
+        }
+      }
+    } catch {
+      // Ignore error
+    }
+  }
+
+  emitMessagePinned(channelId: string, payload: unknown) {
+    this.server.to(channelId).emit(SOCKET_EVENT.MESSAGE_PINNED, payload);
+  }
+
+  emitMessageUnpinned(channelId: string, payload: unknown) {
+    this.server.to(channelId).emit(SOCKET_EVENT.MESSAGE_UNPINNED, payload);
+  }
+
+  @OnEvent(MEMBER_EVENT.MEMBER_MUTED)
+  async handleMemberMuted(payload: {
+    guildId: string;
+    userId: string;
+    mutedUntil: string;
+  }) {
+    try {
+      // emit muted 用户
+      this.server
+        .to(SocketKeys.userRoom(payload.userId))
+        .emit(SOCKET_EVENT.MEMBER_MUTED, {
+          guildId: payload.guildId,
+          userId: payload.userId,
+          mutedUntil: payload.mutedUntil,
+        });
+
+      // 通知所有 member 来更新
+      const members = await this.memberService.getGuildMembers(payload.guildId);
+      for (const member of members) {
+        if (member.user) {
+          const userId = String(member.user._id || member.user);
+          if (userId !== payload.userId) {
+            this.server
+              .to(SocketKeys.userRoom(userId))
+              .emit(SOCKET_EVENT.MEMBER_MUTED, {
+                guildId: payload.guildId,
+                userId: payload.userId,
+                mutedUntil: payload.mutedUntil,
+              });
+          }
         }
       }
     } catch {

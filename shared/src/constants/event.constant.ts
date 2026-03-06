@@ -18,6 +18,7 @@ export type BotInternalEvent =
 export const MEMBER_EVENT = {
   MEMBER_JOINED: 'member.joined',
   MEMBER_LEFT: 'member.left',
+  MEMBER_MUTED: 'member.muted',
 } as const;
 
 export type MemberEvent = (typeof MEMBER_EVENT)[keyof typeof MEMBER_EVENT];

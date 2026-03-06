@@ -1,12 +1,16 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
+  Inject,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
+  forwardRef,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtGuard } from '../../common/guards/jwt.guard';
@@ -22,15 +26,24 @@ import {
   JwtPayload,
   MessageListResponse,
   MessageResponse,
+  PinnedMessagesResponse,
+  SearchMessagesResponse,
+  SearchMessagesDTO,
+  searchMessagesDTOSchema,
   PERMISSIONS,
 } from '@discord-platform/shared';
 import { User } from '../../common/decorators/user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/validation.pipe';
+import { ChatGateway } from '../gateway/gateway';
 
 @Controller('channels/:channelId/messages')
 @UseGuards(JwtGuard, PermissionGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly gateway: ChatGateway,
+  ) {}
 
   @Throttle({
     short: { limit: 5, ttl: 1000 },
@@ -98,6 +111,110 @@ export class ChatController {
       data: result,
       statusCode: HttpStatus.OK,
       message: 'Presigned URL generated',
+    };
+  }
+
+  @Get('search')
+  @RequirePermissions(PERMISSIONS.VIEW_CHANNELS)
+  async searchMessages(
+    @Param('channelId') channelId: string,
+    @Query('query') query: string,
+    @Query('mode') mode?: string,
+    @Query('authorId') authorId?: string,
+    @Query('before') before?: string,
+    @Query('after') after?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ): Promise<ApiResponse<SearchMessagesResponse>> {
+    const dto: SearchMessagesDTO = searchMessagesDTOSchema.parse({
+      query,
+      mode,
+      authorId,
+      before,
+      after,
+      limit,
+      offset,
+    });
+    const { messages, total } = await this.chatService.searchMessages(
+      channelId,
+      dto,
+    );
+    const mappedMessages = await Promise.all(
+      messages.map((msg) => this.chatService.toMessageResponse(msg)),
+    );
+    return {
+      data: {
+        messages: mappedMessages as MessageResponse[],
+        total,
+      },
+      statusCode: HttpStatus.OK,
+    };
+  }
+
+  @Get('pins')
+  @RequirePermissions(PERMISSIONS.VIEW_CHANNELS)
+  async getPinnedMessages(
+    @Param('channelId') channelId: string,
+  ): Promise<ApiResponse<PinnedMessagesResponse>> {
+    const messages = await this.chatService.getPinnedMessages(channelId);
+    const mappedMessages = await Promise.all(
+      messages.map((msg) => this.chatService.toMessageResponse(msg)),
+    );
+    return {
+      data: {
+        messages: mappedMessages as MessageResponse[],
+        count: mappedMessages.length,
+      },
+      statusCode: HttpStatus.OK,
+    };
+  }
+
+  @Put('pins/:messageId')
+  @RequirePermissions(PERMISSIONS.MANAGE_MESSAGES)
+  async pinMessage(
+    @User() user: JwtPayload,
+    @Param('channelId') channelId: string,
+    @Param('messageId') messageId: string,
+  ): Promise<ApiResponse<MessageResponse>> {
+    const message = await this.chatService.pinMessage(
+      channelId,
+      messageId,
+      user.sub,
+    );
+    const response = (await this.chatService.toMessageResponse(
+      message,
+    )) as MessageResponse;
+    this.gateway.emitMessagePinned(channelId, {
+      messageId,
+      channelId,
+      message: response,
+    });
+    return {
+      data: response,
+      statusCode: HttpStatus.OK,
+      message: 'Message pinned successfully',
+    };
+  }
+
+  @Delete('pins/:messageId')
+  @RequirePermissions(PERMISSIONS.MANAGE_MESSAGES)
+  async unpinMessage(
+    @Param('channelId') channelId: string,
+    @Param('messageId') messageId: string,
+  ): Promise<ApiResponse<MessageResponse>> {
+    const message = await this.chatService.unpinMessage(channelId, messageId);
+    const response = (await this.chatService.toMessageResponse(
+      message,
+    )) as MessageResponse;
+    this.gateway.emitMessageUnpinned(channelId, {
+      messageId,
+      channelId,
+      message: response,
+    });
+    return {
+      data: response,
+      statusCode: HttpStatus.OK,
+      message: 'Message unpinned successfully',
     };
   }
 }

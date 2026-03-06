@@ -17,6 +17,14 @@ export const AUTOMOD_ACTION = {
 export type AutoModActionType =
   (typeof AUTOMOD_ACTION)[keyof typeof AUTOMOD_ACTION];
 
+export const ESCALATION_ACTION = {
+  MUTE: 'mute',
+  KICK: 'kick',
+} as const;
+
+export type EscalationActionType =
+  (typeof ESCALATION_ACTION)[keyof typeof ESCALATION_ACTION];
+
 export const TOXICITY_LABEL = {
   TOXIC: 'toxic',
   SEVERE_TOXIC: 'severe_toxic',
@@ -34,4 +42,5 @@ export const AUTOMOD_DEFAULTS = {
   SPAM_WINDOW_MS: 10_000,
   SPAM_MAX_DUPLICATES: 3,
   MUTE_DURATION_MS: 5 * 60 * 1000, // 5 minutes
+  ESCALATION_WINDOW_MS: 24 * 60 * 60 * 1000, // 24 hours
 } as const;

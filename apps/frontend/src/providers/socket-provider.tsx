@@ -19,6 +19,7 @@ import { chatKeys } from '../hooks/use-chat';
 import { unreadKeys } from '../hooks/use-unread';
 import { permissionKeys } from '../hooks/use-permission';
 import { channelKeys } from '../hooks/use-channel';
+import { memberKeys } from '../hooks/use-member';
 import { toast } from '../hooks/use-toast';
 import {
   CreateMessageDTO,
@@ -26,6 +27,7 @@ import {
   BotStreamStartPayload,
   BotStreamChunkPayload,
   UnreadUpdatePayload,
+  MessagePinEvent,
   SOCKET_EVENT,
 } from '@discord-platform/shared';
 
@@ -195,6 +197,39 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         queryClient.invalidateQueries({ queryKey: chatKeys.all });
       }
     });
+
+    // Pin events
+    socket.on(SOCKET_EVENT.MESSAGE_PINNED, (data: MessagePinEvent) => {
+      useChatStore.getState().updateMessage(data.channelId, data.messageId, {
+        pinned: true,
+        pinnedBy: data.message.pinnedBy,
+        pinnedAt: data.message.pinnedAt,
+      });
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.pinned(data.channelId),
+      });
+    });
+
+    socket.on(SOCKET_EVENT.MESSAGE_UNPINNED, (data: MessagePinEvent) => {
+      useChatStore.getState().updateMessage(data.channelId, data.messageId, {
+        pinned: false,
+        pinnedBy: undefined,
+        pinnedAt: undefined,
+      });
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.pinned(data.channelId),
+      });
+    });
+
+    // Member muted event – refresh member list so mute badge shows
+    socket.on(
+      SOCKET_EVENT.MEMBER_MUTED,
+      (data: { guildId: string; userId: string; mutedUntil: string }) => {
+        queryClient.invalidateQueries({
+          queryKey: memberKeys.byGuild(data.guildId),
+        });
+      },
+    );
 
     // AutoMod / WS exception events
     socket.on(
