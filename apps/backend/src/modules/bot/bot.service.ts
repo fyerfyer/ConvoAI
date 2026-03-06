@@ -132,23 +132,25 @@ export class BotService {
     // 同步定时任务（始终同步，无论 schedules 是否存在）
     await this.schedulerService.syncBotSchedules(bot._id.toString());
 
-    // 如果是 channel-scope 且前端传入了 channelId，自动创建绑定
-    if (dto.channelId && (!dto.scope || dto.scope === BOT_SCOPE.CHANNEL)) {
-      try {
-        await this.channelBotService.bindBotToChannel(ownerId, {
-          botId: bot._id.toString(),
-          channelId: dto.channelId,
-          enabled: true,
-          memoryScope: 'channel',
-        });
-      } catch (err) {
-        this.logger.warn(`Failed to auto-bind bot to channel: ${err.message}`);
-        // Binding may fail if channel doesn't exist, but bot is still created
+    // Channel-scope bots 必须绑定一个 channel
+    if (!dto.scope || dto.scope === BOT_SCOPE.CHANNEL) {
+      if (!dto.channelId) {
+        await this.botModel.findByIdAndDelete(bot._id);
+        await this.userModel.findByIdAndDelete(botUser._id);
+        throw new BadRequestException(
+          'channelId is required when creating a channel-scoped bot',
+        );
       }
+      await this.channelBotService.bindBotToChannel(ownerId, {
+        botId: bot._id.toString(),
+        channelId: dto.channelId,
+        enabled: true,
+        memoryScope: 'channel',
+      });
     }
 
     this.logger.log(
-      `Bot "${dto.name}" created in guild ${dto.guildId} (mode: ${executionMode})`,
+      `Bot "${dto.name}" created in guild ${dto.guildId} (mode: ${executionMode})${dto.channelId ? ` bound to channel ${dto.channelId}` : ''}`,
     );
 
     return { bot, webhookSecret };

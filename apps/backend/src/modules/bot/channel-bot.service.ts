@@ -23,6 +23,7 @@ import {
   MEMORY_SCOPE,
   EXECUTION_MODE,
   BOT_STATUS,
+  BOT_SCOPE,
   LlmToolValue,
   ChannelSlashCommandInfo,
 } from '@discord-platform/shared';
@@ -78,6 +79,18 @@ export class ChannelBotService {
     });
     if (existing) {
       throw new ConflictException('Bot is already bound to this channel');
+    }
+
+    // Channel-scope bot 只能绑定一个 channel
+    if (bot.scope === BOT_SCOPE.CHANNEL) {
+      const anyBinding = await this.channelBotModel.findOne({
+        botId: new Types.ObjectId(dto.botId),
+      });
+      if (anyBinding) {
+        throw new ConflictException(
+          'This channel-scoped bot is already bound to a channel. Channel bindings are immutable — create a new bot for a different channel.',
+        );
+      }
     }
 
     const channelBot = new this.channelBotModel({

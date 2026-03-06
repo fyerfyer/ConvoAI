@@ -53,8 +53,17 @@ export class BotOrchestratorService {
       const isSlashCommand = content.startsWith('/');
       const hasMention = content.includes('@');
 
+      this.logger.log(
+        `[BotOrchestrator] Message ${message._id} from user ${senderId}: isSlashCommand=${isSlashCommand}, hasMention=${hasMention}, content="${content.slice(0, 80)}"`,
+      );
+
       // 如果既没有 @mention 也不是 slash command，跳过
-      if (!isSlashCommand && !hasMention) return;
+      if (!isSlashCommand && !hasMention) {
+        this.logger.log(
+          `[BotOrchestrator] Skipping message ${message._id} — no @mention and not a slash command. To trigger a bot, use @BotName or /command.`,
+        );
+        return;
+      }
 
       const channelId = String(message.channelId);
       const channel = await this.channelModel.findById(channelId);
@@ -67,7 +76,16 @@ export class BotOrchestratorService {
         this.botService.findActiveBotsByGuild(guildId),
       ]);
 
-      if (channelBindings.length === 0 && guildBots.length === 0) return;
+      this.logger.log(
+        `[BotOrchestrator] Channel ${channelId}: ${channelBindings.length} binding(s), ${guildBots.length} guild-wide bot(s)`,
+      );
+
+      if (channelBindings.length === 0 && guildBots.length === 0) {
+        this.logger.log(
+          `[BotOrchestrator] No bots found for channel ${channelId} / guild ${guildId} — skipping`,
+        );
+        return;
+      }
 
       // 构建 channel 绑定 Bot 的 ID 集合
       const channelBoundBotIds = new Set(
@@ -140,6 +158,19 @@ export class BotOrchestratorService {
         mentionedChannelBots.length === 0 &&
         mentionedGuildBots.length === 0
       ) {
+        const availableNames = [
+          ...validChannelBots.map(({ bot }) => {
+            const u = bot.userId as unknown as UserDocument;
+            return u?.name || '?';
+          }),
+          ...guildScopeBots.map((bot) => {
+            const u = bot.userId as unknown as UserDocument;
+            return u?.name || '?';
+          }),
+        ];
+        this.logger.log(
+          `[BotOrchestrator] No bot was @mentioned in message ${message._id}. Available bots: [${availableNames.join(', ')}]. Use @BotName to trigger.`,
+        );
         return;
       }
 

@@ -107,6 +107,9 @@ export default function CreateBotDialog({
   );
   const [scope, setScope] = useState<string>(BOT_SCOPE.CHANNEL);
 
+  // Channel binding (required for channel-scoped bots)
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+
   // Common fields
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -160,6 +163,7 @@ export default function CreateBotDialog({
 
   const canSubmit = useMemo(() => {
     if (!name.trim()) return false;
+    if (scope === BOT_SCOPE.CHANNEL && !selectedChannelId) return false;
     switch (executionMode) {
       case EXECUTION_MODE.WEBHOOK:
         return !!webhookUrl.trim();
@@ -170,7 +174,16 @@ export default function CreateBotDialog({
       default:
         return false;
     }
-  }, [name, executionMode, webhookUrl, selectedTemplate, llmApiKey, llmModel]);
+  }, [
+    name,
+    scope,
+    selectedChannelId,
+    executionMode,
+    webhookUrl,
+    selectedTemplate,
+    llmApiKey,
+    llmModel,
+  ]);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -182,6 +195,9 @@ export default function CreateBotDialog({
         description: description.trim() || '',
         executionMode: executionMode as 'webhook' | 'builtin' | 'managed-llm',
         scope: scope as 'guild' | 'channel',
+        ...(scope === BOT_SCOPE.CHANNEL && selectedChannelId
+          ? { channelId: selectedChannelId }
+          : {}),
         ...(avatarBase64 ? { avatar: avatarBase64 } : {}),
       };
 
@@ -222,9 +238,7 @@ export default function CreateBotDialog({
               systemPrompt: llmSystemPrompt,
               temperature: llmTemperature,
               maxTokens: llmMaxTokens,
-              tools: llmTools as Array<
-                'web-search' | 'code-execution'
-              >,
+              tools: llmTools as Array<'web-search' | 'code-execution'>,
               ...(llmProvider === LLM_PROVIDER.CUSTOM && llmCustomBaseUrl
                 ? { customBaseUrl: llmCustomBaseUrl }
                 : {}),
@@ -260,6 +274,7 @@ export default function CreateBotDialog({
     setStep('mode');
     setExecutionMode(EXECUTION_MODE.WEBHOOK);
     setScope(BOT_SCOPE.CHANNEL);
+    setSelectedChannelId('');
     setName('');
     setDescription('');
     setAvatarPreview(null);
@@ -666,10 +681,46 @@ export default function CreateBotDialog({
             </div>
             <p className="mt-1 text-[10px] text-gray-500">
               {scope === BOT_SCOPE.CHANNEL
-                ? 'After creating, bind this bot to channels where you want it active.'
+                ? 'Channel-scoped bots must be bound to a channel at creation. The binding is permanent.'
                 : 'This bot will respond in every channel of the guild.'}
             </p>
           </div>
+
+          {/* ── Channel Selector (required for channel-scoped bots) ── */}
+          {scope === BOT_SCOPE.CHANNEL && (
+            <div>
+              <Label className="text-gray-300 text-xs mb-1 block">
+                Bind to Channel <span className="text-red-400">*</span>
+              </Label>
+              <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-600 bg-gray-900 p-1">
+                {channels.length === 0 ? (
+                  <p className="text-xs text-gray-500 p-2">No channels found</p>
+                ) : (
+                  channels.map((ch: { id: string; name: string }) => (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => setSelectedChannelId(ch.id)}
+                      className={cn(
+                        'flex items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-all',
+                        selectedChannelId === ch.id
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-gray-300 hover:bg-gray-700',
+                      )}
+                    >
+                      <span className="text-gray-500">#</span>
+                      {ch.name}
+                    </button>
+                  ))
+                )}
+              </div>
+              {!selectedChannelId && (
+                <p className="mt-1 text-[11px] text-red-400">
+                  A channel must be selected for channel-scoped bots.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ── Webhook URL (Webhook mode) ── */}
           {executionMode === EXECUTION_MODE.WEBHOOK && (

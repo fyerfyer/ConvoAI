@@ -49,12 +49,19 @@ export class MemoryService {
   ): Promise<MemoryContext> {
     // 临时模式：不持久化记忆
     if (memoryScope === MEMORY_SCOPE.EPHEMERAL) {
+      this.logger.log(
+        `[MemoryService] Ephemeral scope for bot ${botId} — skipping memory fetch`,
+      );
       return {
         rollingSummary: '',
         recentMessages: [],
         summarizedMessageCount: 0,
       };
     }
+
+    this.logger.log(
+      `[MemoryService] Fetching memory context for bot=${botId} channel=${channelId} scope=${memoryScope} userId=${userId ?? 'n/a'}`,
+    );
 
     const memory = await this.getOrCreateMemory(botId, channelId, guildId);
 
@@ -68,6 +75,10 @@ export class MemoryService {
       recentMessages,
       summarizedMessageCount: memory.summarizedMessageCount,
     };
+
+    this.logger.log(
+      `[MemoryService] Memory loaded — rollingSummary=${ctx.rollingSummary ? `${ctx.rollingSummary.length} chars` : 'empty'}, recentMessages=${recentMessages.length}, summarizedCount=${memory.summarizedMessageCount}`,
+    );
 
     // 获取用户相关知识
     if (userId) {
@@ -87,6 +98,13 @@ export class MemoryService {
             extractedAt: uk.createdAt?.toISOString() || '',
             expiresAt: uk.expiresAt?.toISOString(),
           }));
+          this.logger.log(
+            `[MemoryService] Injecting ${ctx.userKnowledge.length} user knowledge facts for user ${userId}`,
+          );
+        } else {
+          this.logger.log(
+            `[MemoryService] No user knowledge facts found for user ${userId}`,
+          );
         }
       } catch (err) {
         this.logger.warn(
@@ -107,6 +125,13 @@ export class MemoryService {
         );
         if (ragResults.length > 0) {
           ctx.ragContext = ragResults;
+          this.logger.log(
+            `[MemoryService] RAG: ${ragResults.length} relevant context snippets found for query "${query.slice(0, 60)}"`,
+          );
+        } else {
+          this.logger.log(
+            `[MemoryService] RAG: no relevant context found for query "${query.slice(0, 60)}"`,
+          );
         }
       } catch (err) {
         this.logger.warn(
@@ -130,6 +155,10 @@ export class MemoryService {
   ): Promise<void> {
     if (memoryScope === MEMORY_SCOPE.EPHEMERAL) return;
 
+    this.logger.log(
+      `[MemoryService] Updating memory after interaction — bot=${botId} channel=${channelId} user=${userId ?? 'n/a'}`,
+    );
+
     try {
       const memory = await this.getOrCreateMemory(botId, channelId, guildId);
       memory.interactionsSinceSummary += 1;
@@ -139,6 +168,9 @@ export class MemoryService {
         memory.interactionsSinceSummary >=
         MEMORY_DEFAULTS.SUMMARY_TRIGGER_THRESHOLD
       ) {
+        this.logger.log(
+          `[MemoryService] Enqueuing summarize job (interactions=${memory.interactionsSinceSummary} >= threshold=${MEMORY_DEFAULTS.SUMMARY_TRIGGER_THRESHOLD})`,
+        );
         await this.memoryProducer.enqueueSummarize({
           botId,
           channelId,
@@ -150,10 +182,16 @@ export class MemoryService {
 
       // 获取最近的消息，然后通过 MemoryFilterService 过滤
       const rawMessages = await this.getRecentMessages(channelId, 10);
+      this.logger.log(
+        `[MemoryService] Filter pipeline: ${rawMessages.length} raw messages from channel ${channelId}`,
+      );
 
       // 内容质量过滤
       const filtered =
         await this.memoryFilterService.filterMessages(rawMessages);
+      this.logger.log(
+        `[MemoryService] Filter pipeline: ${filtered.length}/${rawMessages.length} messages passed quality filter`,
+      );
       if (filtered.length === 0) return;
 
       // PII 脱敏
@@ -164,10 +202,14 @@ export class MemoryService {
         const userMessages = sanitized.filter(
           (m) => m.role === 'user' && m.author === userName,
         );
-        if (
-          userMessages.length > 0 &&
-          (await this.memoryFilterService.hasSemanticDensity(userMessages))
-        ) {
+        const hasDensity =
+          userMessages.length > 0
+            ? await this.memoryFilterService.hasSemanticDensity(userMessages)
+            : false;
+        this.logger.log(
+          `[MemoryService] Entity extraction check: ${userMessages.length} user messages, semanticDensity=${hasDensity}`,
+        );
+        if (userMessages.length > 0 && hasDensity) {
           await this.memoryProducer.enqueueExtractEntities({
             botId,
             channelId,
@@ -179,21 +221,44 @@ export class MemoryService {
         }
       }
 
-      // RAG Embedding（带重要性评分过滤）
+      // RAG Embedding（带重要性评分过滤 + 去重）
       if (sanitized.length > 0) {
-        const scored =
-          await this.memoryFilterService.scoreImportance(sanitized);
-        const worthEmbedding = scored
-          .filter((r) => r.tier !== 'low')
-          .map((r) => r.message);
+        // 过滤掉已经嵌入过的消息
+        const lastEmbId = memory.lastEmbeddedMessageId || '';
+        const newMessages = lastEmbId
+          ? sanitized.filter((m) => m.messageId && m.messageId > lastEmbId)
+          : sanitized;
 
-        if (worthEmbedding.length > 0) {
-          await this.memoryProducer.enqueueEmbedConversation({
-            botId,
-            channelId,
-            guildId,
-            messages: worthEmbedding,
-          });
+        if (newMessages.length > 0) {
+          const scored =
+            await this.memoryFilterService.scoreImportance(newMessages);
+          const worthEmbedding = scored
+            .filter((r) => r.tier !== 'low')
+            .map((r) => r.message);
+
+          this.logger.log(
+            `[MemoryService] RAG embedding: ${worthEmbedding.length}/${newMessages.length} new messages scored non-low importance (skipped ${sanitized.length - newMessages.length} already-embedded)`,
+          );
+
+          if (worthEmbedding.length > 0) {
+            await this.memoryProducer.enqueueEmbedConversation({
+              botId,
+              channelId,
+              guildId,
+              messages: worthEmbedding,
+            });
+
+            // 更新最后嵌入的消息 ID
+            const lastMsg = sanitized[sanitized.length - 1];
+            if (lastMsg?.messageId) {
+              memory.lastEmbeddedMessageId = lastMsg.messageId;
+              await memory.save();
+            }
+          }
+        } else {
+          this.logger.log(
+            `[MemoryService] RAG embedding: all ${sanitized.length} messages already embedded, skipping`,
+          );
         }
       }
     } catch (err) {
@@ -207,7 +272,9 @@ export class MemoryService {
 
   async clearMemory(botId: string, channelId: string): Promise<void> {
     await this.botMemoryModel.deleteOne({ botId, channelId });
-    await this.ragService.deleteByChannel(botId, channelId).catch(() => { /* empty */ });
+    await this.ragService.deleteByChannel(botId, channelId).catch(() => {
+      /* empty */
+    });
     this.logger.log(
       `[MemoryService] Cleared memory for bot ${botId} in channel ${channelId}`,
     );
@@ -215,7 +282,9 @@ export class MemoryService {
 
   async clearGuildMemory(botId: string, guildId: string): Promise<void> {
     const result = await this.botMemoryModel.deleteMany({ botId, guildId });
-    await this.ragService.deleteByBot(botId).catch(() => { /* empty */ });
+    await this.ragService.deleteByBot(botId).catch(() => {
+      /* empty */
+    });
     this.logger.log(
       `[MemoryService] Cleared ${result.deletedCount} memory records for bot ${botId} in guild ${guildId}`,
     );

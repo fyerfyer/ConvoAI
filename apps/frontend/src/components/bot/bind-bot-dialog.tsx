@@ -57,7 +57,7 @@ export default function BindBotDialog({
   const [useToolOverride, setUseToolOverride] = useState(false);
   const [memoryScope, setMemoryScope] = useState<string>(MEMORY_SCOPE.CHANNEL);
 
-  // Filter to channel-scope bots not yet bound to this channel
+  // Filter to channel-scope bots not yet bound anywhere (binding is immutable/single)
   const alreadyBoundBotIds = new Set(channelBots.map((cb) => cb.botId));
   const availableBots = useMemo(
     () =>
@@ -65,8 +65,11 @@ export default function BindBotDialog({
         (b: BotResponse) =>
           b.scope === BOT_SCOPE.CHANNEL &&
           b.status === BOT_STATUS.ACTIVE &&
-          !alreadyBoundBotIds.has(b.id),
+          !alreadyBoundBotIds.has(b.id) &&
+          // Channel-scope bots with any existing binding are already committed
+          !(b.channelBindingCount && b.channelBindingCount > 0),
       ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [allBots, alreadyBoundBotIds],
   );
 

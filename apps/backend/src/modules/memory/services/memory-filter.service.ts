@@ -16,6 +16,16 @@ export interface ImportanceResult {
 
 // TODO：是不是可以用机器学习？
 
+// CJK 字符范围
+const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g;
+
+// 实体提取信号词：包含这些词的消息大概率含有可提取的事实
+const ENTITY_SIGNAL_RE =
+  /记住|别忘|我是|我叫|我喜欢|我在做|我擅长|我的名字|我正在|remember|don't forget|i am|my name|i like|i prefer|i work/i;
+
+// @mention 前缀 (e.g., "@bot-name ")
+const MENTION_RE = /^@\S+\s*/;
+
 // Bot 命令正则
 const COMMAND_RE = /^[/!]\S/;
 
@@ -32,9 +42,16 @@ const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const PHONE_RE =
   /(\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}/g;
 
-// 密码
+// 密码 / Token / API Key (英文格式：key=value)
 const PASSWORD_RE =
   /(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=]\s*\S+/gi;
+
+// 裸 API Key 格式 (sk-xxx, pk-xxx, Bearer xxx 等)
+const BARE_API_KEY_RE = /\b(?:sk|pk|ak|rk)-[a-zA-Z0-9]{8,}\b/g;
+
+// 中文语境下的 API Key / 密码 (e.g., "API Key 是 sk-xxx", "密码是 abc123")
+const CJK_SENSITIVE_RE =
+  /(?:api\s*key|密[码碼]|秘[钥鑰]|令牌|token|密码)\s*[是为：:]\s*\S+/gi;
 
 // IPv4 地址
 const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
@@ -155,12 +172,16 @@ export class MemoryFilterService implements OnModuleInit {
       );
     }
 
+    this.logger.log(
+      `[MemoryFilterService] filterMessages: input=${messages.length}, definiteKeep=${definitelyKeep.length}, dropped=${definitelyDrop.length}, ambiguous→kept=${llmKept.length}, total=${definitelyKeep.length + llmKept.length}`,
+    );
+
     return [...definitelyKeep, ...llmKept];
   }
 
-  // TODO：这里应该用更严谨的策略
   private triageContent(content: string): 'keep' | 'drop' | 'ambiguous' {
-    const trimmed = content.trim();
+    // 去掉 @mention 前缀再判断实际内容
+    const trimmed = content.trim().replace(MENTION_RE, '').trim();
 
     // 明确 drop：极短、命令、纯 URL、纯 emoji
     if (trimmed.length <= MEMORY_DEFAULTS.MIN_MESSAGE_LENGTH) return 'drop';
@@ -169,6 +190,9 @@ export class MemoryFilterService implements OnModuleInit {
     if (PURE_EMOJI_RE.test(trimmed)) return 'drop';
 
     // 明确 keep：较长且包含实质内容
+    // CJK 文字信息密度远高于拉丁字母，降低 keep 阈值
+    const cjkChars = trimmed.match(CJK_RE);
+    if (cjkChars && cjkChars.length > 0 && trimmed.length > 8) return 'keep';
     if (trimmed.length > 40) return 'keep';
 
     // 中间地带（6-40 字符）：交给 LLM 裁决
@@ -224,102 +248,43 @@ Example: [true, false, true]`;
     return messages.filter((_, i) => verdicts[i] === true);
   }
 
-  // 语义密度检查（混合策略：规则 + LLM）
+  // 语义密度检查：判断消息是否包含可提取的有意义信息
   async hasSemanticDensity(messages: AgentContextMessage[]): Promise<boolean> {
     const userMessages = messages.filter((m) => m.role === 'user');
     if (userMessages.length === 0) return false;
 
     const combined = userMessages.map((m) => m.content).join(' ');
 
-    // 快速规则判断：明确不足
+    // 太短，无内容可提取
     if (combined.length < MEMORY_DEFAULTS.MIN_SEMANTIC_DENSITY_LENGTH) {
       return false;
     }
 
-    // 规则辅助：词汇多样性 + 平均词长
+    // 包含显式实体提取信号词 → 直接通过
+    if (ENTITY_SIGNAL_RE.test(combined)) return true;
+
+    // CJK 字符数 + 英文单词数 = 信息单元
+    const cjkCount = (combined.match(CJK_RE) || []).length;
     const words = combined.split(/\s+/).filter((w) => w.length > 0);
-    const uniqueWords = new Set(words.map((w) => w.toLowerCase()));
-    const avgWordLen =
-      words.length > 0
-        ? words.reduce((sum, w) => sum + w.length, 0) / words.length
-        : 0;
+    const infoUnits = cjkCount + words.filter((w) => !CJK_RE.test(w)).length;
 
-    // 明确足够：词汇丰富且有一定长度
-    if (uniqueWords.size >= 8 && avgWordLen >= 3) return true;
+    // 足够的信息单元
+    if (infoUnits >= 10) return true;
 
-    // 明确不足：全是极短重复词
-    if (uniqueWords.size <= 2 && words.length <= 4) return false;
-
-    // 优先用嵌入模型检查语义密度
-    if (this.embeddingModel?.isAvailable()) {
+    // 多条消息时用嵌入模型做多样性检测
+    if (userMessages.length > 1 && this.embeddingModel?.isAvailable()) {
       try {
         const density = await this.embeddingModel.computeSemanticDensity(
           userMessages.map((m) => m.content),
         );
-        // density > 0.15 indicates diverse topics
         return density > 0.15;
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.logger.warn(
-          `[MemoryFilterService] Embedding density check failed: ${error.message}`,
-        );
+      } catch {
+        /* fallback below */
       }
     }
 
-    // 模糊地带 → LLM 裁决
-    if (this.llmEnabled) {
-      try {
-        return await this.llmCheckSemanticDensity(userMessages);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.logger.warn(
-          `[MemoryFilterService] LLM density check failed, using rule fallback: ${error.message}`,
-        );
-      }
-    }
-
-    // fallback：通过长度阈值的默认为有密度
-    return true;
-  }
-
-  // LLM 判断语义密度
-  private async llmCheckSemanticDensity(
-    messages: AgentContextMessage[],
-  ): Promise<boolean> {
-    const text = messages.map((m) => `${m.author}: ${m.content}`).join('\n');
-
-    const systemPrompt = `You are a semantic density analyzer. Determine whether the following user message contains extractable meaningful knowledge (such as personal preferences, facts, plans, technical details, etc.).
-
-Return false if the message is just simple greetings or casual chat (like "hello", "haha", "ok", "good night").
-Return true if the message contains any substantive information.
-
-Return only true or false, no other text.`;
-
-    const response = await this.httpService.axiosRef.post(
-      `${this.baseUrl}/chat/completions`,
-      {
-        model: this.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text },
-        ],
-        temperature: 0.1,
-        max_tokens: 10,
-        stream: false,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        timeout: 10_000,
-      },
-    );
-
-    const answer = (response.data?.choices?.[0]?.message?.content || '')
-      .trim()
-      .toLowerCase();
-    return answer === 'true';
+    // fallback：长度足够则认为有密度
+    return combined.length >= 50;
   }
 
   // 重要性评分
@@ -329,7 +294,15 @@ Return only true or false, no other text.`;
     // 优先用嵌入模型进行混合评分
     if (this.embeddingModel?.isAvailable()) {
       try {
-        return await this.embeddingScoreImportance(messages);
+        const results = await this.embeddingScoreImportance(messages);
+        const tiers = results.reduce(
+          (acc, r) => ({ ...acc, [r.tier]: (acc[r.tier] || 0) + 1 }),
+          {} as Record<string, number>,
+        );
+        this.logger.log(
+          `[MemoryFilterService] scoreImportance (embedding): ${messages.length} messages → ${JSON.stringify(tiers)}`,
+        );
+        return results;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         this.logger.warn(
@@ -340,7 +313,11 @@ Return only true or false, no other text.`;
 
     if (this.llmEnabled) {
       try {
-        return await this.llmScoreImportance(messages);
+        const results = await this.llmScoreImportance(messages);
+        this.logger.log(
+          `[MemoryFilterService] scoreImportance (llm): ${messages.length} messages scored`,
+        );
+        return results;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         this.logger.warn(
@@ -348,7 +325,11 @@ Return only true or false, no other text.`;
         );
       }
     }
-    return this.ruleScoreImportance(messages);
+    const results = this.ruleScoreImportance(messages);
+    this.logger.log(
+      `[MemoryFilterService] scoreImportance (rules): ${messages.length} messages scored`,
+    );
+    return results;
   }
 
   private ruleScoreImportance(
@@ -450,13 +431,20 @@ Example for 3 messages: [0.8, 0.3, 0.6]`;
     });
   }
 
+  // 去掉 @mention 前缀，用于内容质量判断
+  private stripMention(content: string): string {
+    return content.trim().replace(MENTION_RE, '').trim();
+  }
+
   // Embedding-base
   private async embeddingFilterMessages(
     messages: AgentContextMessage[],
   ): Promise<AgentContextMessage[]> {
     const kept: AgentContextMessage[] = [];
     for (const msg of messages) {
-      const quality = await this.embeddingModel.classifyQuality(msg.content);
+      const quality = await this.embeddingModel.classifyQuality(
+        this.stripMention(msg.content),
+      );
       if (quality >= 0.45) {
         kept.push(msg);
       }
@@ -473,11 +461,18 @@ Example for 3 messages: [0.8, 0.3, 0.6]`;
   ): Promise<ImportanceResult[]> {
     return Promise.all(
       messages.map(async (msg) => {
-        const embQuality = await this.embeddingModel.classifyQuality(
-          msg.content,
-        );
-        const ruleScore = this.computeRuleScore(msg.content);
-        const score = Math.min(1, embQuality * 0.6 + ruleScore * 0.4);
+        const stripped = this.stripMention(msg.content);
+        const ruleScore = this.computeRuleScore(stripped);
+        // 关键词匹配（如"记住"）直接标记为 high，不受 embedding 稀释
+        if (ruleScore >= 0.9) {
+          return {
+            message: msg,
+            score: ruleScore,
+            tier: 'high' as ImportanceTier,
+          };
+        }
+        const embQuality = await this.embeddingModel.classifyQuality(stripped);
+        const score = Math.min(1, embQuality * 0.5 + ruleScore * 0.5);
         return { message: msg, score, tier: this.tierFromScore(score) };
       }),
     );
@@ -493,6 +488,8 @@ Example for 3 messages: [0.8, 0.3, 0.6]`;
   private redactPII(text: string): string {
     return text
       .replace(PASSWORD_RE, '[SENSITIVE_REDACTED]')
+      .replace(CJK_SENSITIVE_RE, '[SENSITIVE_REDACTED]')
+      .replace(BARE_API_KEY_RE, '[SENSITIVE_REDACTED]')
       .replace(EMAIL_RE, '[EMAIL_REDACTED]')
       .replace(PHONE_RE, (match) => {
         const digits = match.replace(/\D/g, '');

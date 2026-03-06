@@ -215,6 +215,13 @@ export const createBotDTOSchema = z
         path: ['llmConfig'],
       });
     }
+    if ((!data.scope || data.scope === 'channel') && !data.channelId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'channelId is required when creating a channel-scoped bot',
+        path: ['channelId'],
+      });
+    }
   });
 
 export type CreateBotDTO = z.infer<typeof createBotDTOSchema>;

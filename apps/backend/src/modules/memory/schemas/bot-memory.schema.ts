@@ -45,6 +45,10 @@ export class BotMemory {
   @Prop({ type: Number, default: 0 })
   interactionsSinceSummary: number;
 
+  // 最后一条已嵌入到 RAG 向量库的消息 ID（用于去重）
+  @Prop({ type: String, default: '' })
+  lastEmbeddedMessageId: string;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
