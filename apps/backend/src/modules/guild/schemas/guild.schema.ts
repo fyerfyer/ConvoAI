@@ -12,6 +12,9 @@ import { Role, roleSchema } from './role.schema';
 import {
   DEFAULT_EVERYONE_PERMISSIONS,
   ROLE_CONSTANTS,
+  AUTOMOD_TRIGGER,
+  AUTOMOD_ACTION,
+  AUTOMOD_DEFAULTS,
 } from '@discord-platform/shared';
 
 export type GuildDocument = HydratedDocument<Guild>;
@@ -34,6 +37,50 @@ export class Guild {
   // 系统通道（例如发送欢迎信息）
   @Prop({ type: Types.ObjectId, ref: 'Channel' })
   systemChannelId?: PopulatedDoc<ChannelDocument & Document>;
+
+  // AutoMod 配置
+  @Prop({
+    type: {
+      enabled: { type: Boolean, default: false },
+      rules: {
+        type: [
+          {
+            enabled: { type: Boolean, default: true },
+            trigger: { type: String, required: true },
+            keywords: [String],
+            toxicityThreshold: Number,
+            actions: [String],
+            muteDurationMs: Number,
+            exemptRoles: [String],
+          },
+        ],
+        default: [],
+      },
+    },
+    default: {
+      enabled: true,
+      rules: [
+        {
+          enabled: true,
+          trigger: AUTOMOD_TRIGGER.TOXIC_CONTENT,
+          toxicityThreshold: AUTOMOD_DEFAULTS.TOXICITY_THRESHOLD,
+          actions: [AUTOMOD_ACTION.BLOCK_MESSAGE],
+        },
+      ],
+    },
+  })
+  autoModConfig?: {
+    enabled: boolean;
+    rules: Array<{
+      enabled: boolean;
+      trigger: string;
+      keywords?: string[];
+      toxicityThreshold?: number;
+      actions: string[];
+      muteDurationMs?: number;
+      exemptRoles?: string[];
+    }>;
+  };
 
   createdAt?: Date;
   updatedAt?: Date;

@@ -1,4 +1,6 @@
 export class RedisKeys {
+  // ── 权限相关 ──────────────────────────────────────
+
   // 控制整个Guild的权限缓存版本，修改后自动废弃所有旧版本缓存
   static guildPermVersion(guildId: string): string {
     return `guild_perm_version:${guildId}`;
@@ -23,12 +25,38 @@ export class RedisKeys {
     return `permissions:${guildId}:${version}:${userId}:*`;
   }
 
+  // socket 在线状态
   static userSocket(userId: string): string {
     return `user_socket:${userId}`;
   }
 
   static globalOnlineUser(): string {
     return 'global_online_users';
+  }
+
+  // AutoMod
+  // 记录用户在某频道的近期消息，用于检测重复刷屏
+  static automodSpam(
+    guildId: string,
+    channelId: string,
+    userId: string,
+  ): string {
+    return `automod:spam:${guildId}:${channelId}:${userId}`;
+  }
+
+  // 未读消息数量
+  static unreadCount(userId: string, channelId: string): string {
+    return `unread:${userId}:${channelId}:count`;
+  }
+
+  // 最新未读消息 ID
+  static unreadLastMsgId(userId: string, channelId: string): string {
+    return `unread:${userId}:${channelId}:lastMsgId`;
+  }
+
+  // 最新未读消息时间戳
+  static unreadLastMsgAt(userId: string, channelId: string): string {
+    return `unread:${userId}:${channelId}:lastMsgAt`;
   }
 }
 
@@ -37,4 +65,8 @@ export const CACHE_TTL = {
   PERMISSIONS: 300,
   // ws 缓存
   USER_SOCKET: 86400,
+  // AutoMod 消息窗口
+  AUTOMOD_SPAM: 30,
+  // 未读消息过期时间 (30天)
+  UNREAD: 30 * 24 * 60 * 60,
 } as const;

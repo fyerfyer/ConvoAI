@@ -19,6 +19,7 @@ import { UnreadModule } from './modules/unread/unread.module';
 import { QueueModule } from './common/configs/queue/queue.module';
 import { ThrottleModule } from './common/configs/throttle/throttle.module';
 import { HealthModule } from './modules/health/health.module';
+import { AutoModModule } from './modules/automod/automod.module';
 
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
@@ -45,6 +46,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     BotModule,
     MemoryModule,
     UnreadModule,
+    AutoModModule,
   ],
 })
 export class AppModule {}

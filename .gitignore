@@ -50,3 +50,7 @@ out
 
 self-docs
 *.env
+
+# ONNX models 
+apps/backend/models/*.onnx
+apps/backend/models/**/*.onnx

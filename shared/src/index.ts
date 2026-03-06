@@ -21,3 +21,5 @@ export * from './dtos/bot.dto';
 export * from './constants/bot.constant';
 export * from './interfaces/bot.interface';
 export * from './dtos/voice.dto';
+export * from './constants/automod.constant';
+export * from './dtos/automod.dto';

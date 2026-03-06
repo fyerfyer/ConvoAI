@@ -1,6 +1,13 @@
 'use client';
 
-import { Bot, Settings2, Users, Shield, UserCog } from 'lucide-react';
+import {
+  Bot,
+  Settings2,
+  Users,
+  Shield,
+  UserCog,
+  ShieldAlert,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import BotList from '@/components/bot/bot-list';
 import RoleSettingsPanel from '@/components/guild/role-settings-panel';
 import MemberSettingsPanel from '@/components/guild/member-settings-panel';
+import AutoModSettingsPanel from '@/components/guild/automod-settings-panel';
 import { GuildResponse } from '@discord-platform/shared';
 import { usePermissions } from '@/hooks/use-permission';
 
@@ -27,12 +35,15 @@ export default function GuildSettingsDialog({
   guild,
   defaultTab = 'overview',
 }: GuildSettingsDialogProps) {
-  const { canManageRoles, canKickMembers } = usePermissions(guild?.id);
+  const { canManageRoles, canManageGuild, canKickMembers } = usePermissions(
+    guild?.id,
+  );
 
   if (!guild) return null;
 
   const showRolesTab = canManageRoles;
   const showMembersTab = canManageRoles || canKickMembers;
+  const showAutoModTab = canManageGuild;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -73,6 +84,15 @@ export default function GuildSettingsDialog({
               >
                 <UserCog className="h-4 w-4" />
                 Members
+              </TabsTrigger>
+            )}
+            {showAutoModTab && (
+              <TabsTrigger
+                value="automod"
+                className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400 gap-1.5"
+              >
+                <ShieldAlert className="h-4 w-4" />
+                AutoMod
               </TabsTrigger>
             )}
             <TabsTrigger
@@ -122,6 +142,12 @@ export default function GuildSettingsDialog({
             {showMembersTab && (
               <TabsContent value="members" className="mt-0">
                 <MemberSettingsPanel guild={guild} />
+              </TabsContent>
+            )}
+
+            {showAutoModTab && (
+              <TabsContent value="automod" className="mt-0">
+                <AutoModSettingsPanel guild={guild} />
               </TabsContent>
             )}
 

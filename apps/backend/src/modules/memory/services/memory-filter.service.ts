@@ -1,9 +1,10 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 
 import { AgentContextMessage, MEMORY_DEFAULTS } from '@discord-platform/shared';
 import { AppLogger } from '../../../common/configs/logger/logger.service';
+import { EmbeddingModelService } from '../../automod/services/embedding-model.service';
 
 export type ImportanceTier = 'high' | 'normal' | 'low';
 
@@ -68,6 +69,7 @@ export class MemoryFilterService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly logger: AppLogger,
+    @Optional() private readonly embeddingModel?: EmbeddingModelService,
   ) {}
 
   onModuleInit() {
@@ -82,7 +84,13 @@ export class MemoryFilterService implements OnModuleInit {
 
     this.llmEnabled = !!(this.baseUrl && this.apiKey);
 
-    if (this.llmEnabled) {
+    const embAvailable = this.embeddingModel?.isAvailable() ?? false;
+
+    if (embAvailable) {
+      this.logger.log(
+        '[MemoryFilterService] Embedding model available — using local inference for filtering',
+      );
+    } else if (this.llmEnabled) {
       this.logger.log(
         `[MemoryFilterService] LLM filtering enabled (model: "${this.model}")`,
       );
@@ -118,9 +126,19 @@ export class MemoryFilterService implements OnModuleInit {
       else ambiguous.push(msg);
     }
 
-    // 模糊消息交给 LLM
+    // 模糊消息：优先用嵌入模型，其次 LLM，最后保留
     let llmKept: AgentContextMessage[] = ambiguous;
-    if (this.llmEnabled && ambiguous.length > 0) {
+    if (this.embeddingModel?.isAvailable() && ambiguous.length > 0) {
+      try {
+        llmKept = await this.embeddingFilterMessages(ambiguous);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `[MemoryFilterService] Embedding filter failed, trying LLM: ${error.message}`,
+        );
+        llmKept = ambiguous;
+      }
+    } else if (this.llmEnabled && ambiguous.length > 0) {
       try {
         llmKept = await this.llmFilterMessages(ambiguous);
       } catch (err) {
@@ -232,6 +250,22 @@ Example: [true, false, true]`;
     // 明确不足：全是极短重复词
     if (uniqueWords.size <= 2 && words.length <= 4) return false;
 
+    // 优先用嵌入模型检查语义密度
+    if (this.embeddingModel?.isAvailable()) {
+      try {
+        const density = await this.embeddingModel.computeSemanticDensity(
+          userMessages.map((m) => m.content),
+        );
+        // density > 0.15 indicates diverse topics
+        return density > 0.15;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `[MemoryFilterService] Embedding density check failed: ${error.message}`,
+        );
+      }
+    }
+
     // 模糊地带 → LLM 裁决
     if (this.llmEnabled) {
       try {
@@ -292,6 +326,18 @@ Return only true or false, no other text.`;
   async scoreImportance(
     messages: AgentContextMessage[],
   ): Promise<ImportanceResult[]> {
+    // 优先用嵌入模型进行混合评分
+    if (this.embeddingModel?.isAvailable()) {
+      try {
+        return await this.embeddingScoreImportance(messages);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `[MemoryFilterService] Embedding scoring failed, trying LLM: ${error.message}`,
+        );
+      }
+    }
+
     if (this.llmEnabled) {
       try {
         return await this.llmScoreImportance(messages);
@@ -402,6 +448,39 @@ Example for 3 messages: [0.8, 0.3, 0.6]`;
       const score = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.4;
       return { message: msg, score, tier: this.tierFromScore(score) };
     });
+  }
+
+  // Embedding-base
+  private async embeddingFilterMessages(
+    messages: AgentContextMessage[],
+  ): Promise<AgentContextMessage[]> {
+    const kept: AgentContextMessage[] = [];
+    for (const msg of messages) {
+      const quality = await this.embeddingModel.classifyQuality(msg.content);
+      if (quality >= 0.45) {
+        kept.push(msg);
+      }
+    }
+    this.logger.debug(
+      `[MemoryFilterService] Embedding filter: kept ${kept.length}/${messages.length} ambiguous`,
+    );
+    return kept;
+  }
+
+  // 嵌入质量 + 基于规则进行重要性评分。
+  private async embeddingScoreImportance(
+    messages: AgentContextMessage[],
+  ): Promise<ImportanceResult[]> {
+    return Promise.all(
+      messages.map(async (msg) => {
+        const embQuality = await this.embeddingModel.classifyQuality(
+          msg.content,
+        );
+        const ruleScore = this.computeRuleScore(msg.content);
+        const score = Math.min(1, embQuality * 0.6 + ruleScore * 0.4);
+        return { message: msg, score, tier: this.tierFromScore(score) };
+      }),
+    );
   }
 
   sanitizePII(messages: AgentContextMessage[]): AgentContextMessage[] {

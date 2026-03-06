@@ -443,6 +443,7 @@ export class GuildService {
         hoist: r.hoist,
         mentionable: r.mentionable,
       })),
+      autoModConfig: guild.autoModConfig ?? { enabled: false, rules: [] },
       createdAt: guild.createdAt.toISOString(),
       updatedAt: guild.updatedAt.toISOString(),
     };

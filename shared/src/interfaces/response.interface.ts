@@ -36,6 +36,7 @@ export interface GuildResponse {
   ownerId: string;
   roles?: RoleResponse[];
   memberCount?: number;
+  autoModConfig?: AutoModConfigResponse;
   createdAt: string;
   updatedAt: string;
 }
@@ -286,4 +287,40 @@ export interface ChannelSlashCommandInfo {
 
 export interface ChannelSlashCommandsResponse {
   commands: ChannelSlashCommandInfo[];
+}
+
+// ── AutoMod ──
+
+export interface AutoModRuleResponse {
+  enabled: boolean;
+  trigger: string;
+  keywords?: string[];
+  toxicityThreshold?: number;
+  actions: string[];
+  muteDurationMs?: number;
+  exemptRoles?: string[];
+}
+
+export interface AutoModConfigResponse {
+  enabled: boolean;
+  rules: AutoModRuleResponse[];
+}
+
+export interface AutoModLogResponse {
+  id: string;
+  guildId: string;
+  channelId: string;
+  userId: string;
+  userName: string;
+  trigger: string;
+  reason: string;
+  actions: string[];
+  messageContent: string;
+  toxicityScores?: Record<string, number>;
+  createdAt: string;
+}
+
+export interface AutoModLogListResponse {
+  logs: AutoModLogResponse[];
+  total: number;
 }

@@ -3,18 +3,21 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../common/configs/redis/redis.module';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 import { UnreadInfo } from '@discord-platform/shared';
+import {
+  RedisKeys,
+  CACHE_TTL,
+} from '../../common/constants/redis-keys.constant';
 
 /**
  * 使用 Redis 管理未读消息
  *
  * 存储策略：
- * - `unread:{userId}:{channelId}:count`：未读消息数量
- * - `unread:{userId}:{channelId}:lastMsgId`：最新未读消息的 ID
- * - `unread:{userId}:{channelId}:lastMsgAt`：最新未读消息的时间戳
+ * - RedisKeys.unreadCount(userId, channelId)：未读消息数量
+ * - RedisKeys.unreadLastMsgId(userId, channelId)：最新未读消息的 ID
+ * - RedisKeys.unreadLastMsgAt(userId, channelId)：最新未读消息的时间戳
  *
  * 所有键在 30 天无活动后过期。
  */
-const UNREAD_TTL = 30 * 24 * 60 * 60; // 30 days
 
 @Injectable()
 export class UnreadService {
@@ -35,14 +38,14 @@ export class UnreadService {
     for (const userId of memberUserIds) {
       if (userId === senderUserId) continue;
 
-      const countKey = this.countKey(userId, channelId);
-      const msgIdKey = this.lastMsgIdKey(userId, channelId);
-      const msgAtKey = this.lastMsgAtKey(userId, channelId);
+      const countKey = RedisKeys.unreadCount(userId, channelId);
+      const msgIdKey = RedisKeys.unreadLastMsgId(userId, channelId);
+      const msgAtKey = RedisKeys.unreadLastMsgAt(userId, channelId);
 
       pipeline.incr(countKey);
-      pipeline.expire(countKey, UNREAD_TTL);
-      pipeline.set(msgIdKey, messageId, 'EX', UNREAD_TTL);
-      pipeline.set(msgAtKey, messageAt, 'EX', UNREAD_TTL);
+      pipeline.expire(countKey, CACHE_TTL.UNREAD);
+      pipeline.set(msgIdKey, messageId, 'EX', CACHE_TTL.UNREAD);
+      pipeline.set(msgAtKey, messageAt, 'EX', CACHE_TTL.UNREAD);
     }
 
     await pipeline.exec();
@@ -50,9 +53,9 @@ export class UnreadService {
 
   async markRead(userId: string, channelId: string): Promise<void> {
     const pipeline = this.redis.pipeline();
-    pipeline.del(this.countKey(userId, channelId));
-    pipeline.del(this.lastMsgIdKey(userId, channelId));
-    pipeline.del(this.lastMsgAtKey(userId, channelId));
+    pipeline.del(RedisKeys.unreadCount(userId, channelId));
+    pipeline.del(RedisKeys.unreadLastMsgId(userId, channelId));
+    pipeline.del(RedisKeys.unreadLastMsgAt(userId, channelId));
     await pipeline.exec();
   }
 
@@ -61,9 +64,9 @@ export class UnreadService {
     channelId: string,
   ): Promise<UnreadInfo> {
     const [count, lastMsgId, lastMsgAt] = await Promise.all([
-      this.redis.get(this.countKey(userId, channelId)),
-      this.redis.get(this.lastMsgIdKey(userId, channelId)),
-      this.redis.get(this.lastMsgAtKey(userId, channelId)),
+      this.redis.get(RedisKeys.unreadCount(userId, channelId)),
+      this.redis.get(RedisKeys.unreadLastMsgId(userId, channelId)),
+      this.redis.get(RedisKeys.unreadLastMsgAt(userId, channelId)),
     ]);
 
     return {
@@ -82,9 +85,9 @@ export class UnreadService {
 
     const pipeline = this.redis.pipeline();
     for (const channelId of channelIds) {
-      pipeline.get(this.countKey(userId, channelId));
-      pipeline.get(this.lastMsgIdKey(userId, channelId));
-      pipeline.get(this.lastMsgAtKey(userId, channelId));
+      pipeline.get(RedisKeys.unreadCount(userId, channelId));
+      pipeline.get(RedisKeys.unreadLastMsgId(userId, channelId));
+      pipeline.get(RedisKeys.unreadLastMsgAt(userId, channelId));
     }
 
     const results = await pipeline.exec();
@@ -108,17 +111,5 @@ export class UnreadService {
     }
 
     return unreadInfos;
-  }
-
-  private countKey(userId: string, channelId: string): string {
-    return `unread:${userId}:${channelId}:count`;
-  }
-
-  private lastMsgIdKey(userId: string, channelId: string): string {
-    return `unread:${userId}:${channelId}:lastMsgId`;
-  }
-
-  private lastMsgAtKey(userId: string, channelId: string): string {
-    return `unread:${userId}:${channelId}:lastMsgAt`;
   }
 }

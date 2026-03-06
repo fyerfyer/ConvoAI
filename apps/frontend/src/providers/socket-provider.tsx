@@ -19,6 +19,7 @@ import { chatKeys } from '../hooks/use-chat';
 import { unreadKeys } from '../hooks/use-unread';
 import { permissionKeys } from '../hooks/use-permission';
 import { channelKeys } from '../hooks/use-channel';
+import { toast } from '../hooks/use-toast';
 import {
   CreateMessageDTO,
   MessageResponse,
@@ -194,6 +195,23 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         queryClient.invalidateQueries({ queryKey: chatKeys.all });
       }
     });
+
+    // AutoMod / WS exception events
+    socket.on(
+      'exception',
+      (data: { statusCode?: number; message?: string }) => {
+        console.warn('[Socket] exception:', data);
+        const msg =
+          typeof data?.message === 'string'
+            ? data.message
+            : 'Message blocked by server';
+        toast({
+          title: 'Message blocked',
+          description: msg,
+          variant: 'destructive',
+        });
+      },
+    );
 
     return () => {
       if (heartbeatRef.current) {

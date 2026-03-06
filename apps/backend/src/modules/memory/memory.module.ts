@@ -20,6 +20,7 @@ import { ChatModule } from '../chat/chat.module';
 import { MemoryMaintenanceService } from './memory-maintenance.service';
 import { MemberModule } from '../member/member.module';
 import { Bot, botSchema } from '../bot/schemas/bot.schema';
+import { AutoModModule } from '../automod/automod.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { Bot, botSchema } from '../bot/schemas/bot.schema';
     }),
     ChatModule,
     MemberModule,
+    AutoModModule,
   ],
   providers: [
     MemoryService,

@@ -8,6 +8,7 @@ import { ChatController } from './chat.controller';
 import { MemberModule } from '../member/member.module';
 import { GuildModule } from '../guild/guild.module';
 import { MessageProducer } from './message.producer';
+import { AutoModModule } from '../automod/automod.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MessageProducer } from './message.producer';
     MemberModule,
     ChannelModule,
     forwardRef(() => GuildModule),
+    AutoModModule,
   ],
   providers: [ChatService, MessageProducer],
   exports: [ChatService, MessageProducer],

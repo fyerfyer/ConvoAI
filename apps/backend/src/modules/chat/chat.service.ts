@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
@@ -12,6 +14,7 @@ import {
 import {
   AttachmentPresignedUrlDTO,
   AttachmentValue,
+  AUTOMOD_ACTION,
   BUCKETS,
   CreateMessageDTO,
   MAX_ATTACHMENT_SIZE,
@@ -22,6 +25,8 @@ import { ClientSession, Types, Document } from 'mongoose';
 import { Channel, ChannelModel } from '../channel/schemas/channel.schema';
 import { UserDocument } from '../user/schemas/user.schema';
 import { S3Service } from '../../common/configs/s3/s3.service';
+import { AutoModService } from '../automod/services/automod.service';
+import { AppLogger } from '../../common/configs/logger/logger.service';
 
 @Injectable()
 export class ChatService {
@@ -30,6 +35,8 @@ export class ChatService {
     @InjectModel(Message.name) private readonly messageModel: MessageModel,
     @InjectModel(Channel.name) private readonly channelModel: ChannelModel,
     private readonly s3Service: S3Service,
+    private readonly logger: AppLogger,
+    @Optional() private readonly autoModService?: AutoModService,
   ) {}
 
   async createMessage(
@@ -39,12 +46,50 @@ export class ChatService {
   ): Promise<MessageDocument> {
     const { channelId } = createMessageDTO;
     const channelObjectId = new Types.ObjectId(channelId);
-    const channel = await this.channelModel
-      .exists({ _id: channelObjectId })
+    const channelDoc = await this.channelModel
+      .findById(channelObjectId)
+      .select('_id guild')
       .session(session ?? null);
 
-    if (!channel) {
+    if (!channelDoc) {
       throw new NotFoundException('Channel not found');
+    }
+
+    // AutoMod 检查
+    if (this.autoModService && channelDoc.guild && createMessageDTO.content) {
+      const guildId = channelDoc.guild.toString();
+      this.logger.debug(
+        `[ChatService] Running AutoMod check for guild=${guildId} content="${createMessageDTO.content.slice(0, 60)}"`,
+      );
+      const verdict = await this.autoModService.checkMessage(
+        guildId,
+        channelId,
+        senderId,
+        createMessageDTO.content,
+      );
+
+      this.logger.debug(
+        `[ChatService] AutoMod verdict: allowed=${verdict.allowed} actions=${JSON.stringify(verdict.actions)} reason="${verdict.reason ?? ''}"`,
+      );
+
+      if (!verdict.allowed) {
+        await this.autoModService.executeActions(
+          guildId,
+          senderId,
+          channelId,
+          verdict,
+        );
+
+        if (verdict.actions.includes(AUTOMOD_ACTION.BLOCK_MESSAGE)) {
+          throw new ForbiddenException(
+            `Message blocked by AutoMod: ${verdict.reason}`,
+          );
+        }
+      }
+    } else {
+      this.logger.debug(
+        `[ChatService] AutoMod skipped: service=${!!this.autoModService} guild=${!!channelDoc.guild} content=${!!createMessageDTO.content}`,
+      );
     }
 
     const senderObjectId = new Types.ObjectId(senderId);
