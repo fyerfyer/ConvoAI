@@ -436,7 +436,7 @@ export class ChatService {
     }
 
     message.pinned = true;
-    message.pinnedBy = new Types.ObjectId(userId) as any;
+    message.pinnedBy = new Types.ObjectId(userId);
     message.pinnedAt = new Date();
     await message.save();
 

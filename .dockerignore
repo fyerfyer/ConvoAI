@@ -1,0 +1,47 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+out-tsc
+
+# Next.js caches
+apps/frontend/.next
+
+# IDE files
+.idea
+.vscode
+*.launch
+.settings
+*.sublime-workspace
+
+# Git
+.git
+.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Nx caches
+.nx
+
+# Test files
+coverage
+*.spec.ts
+*.test.ts
+
+# Documentation
+self-docs
+README.md
+
+# Large ONNX models (mounted via volume)
+apps/backend/models/*.onnx
+apps/backend/models/**/*.onnx
+
+# E2E tests
+apps/backend-e2e
