@@ -6,7 +6,7 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## 📖 Introduction
 
@@ -105,4 +105,4 @@ npx nx dev frontend
 
 ## 📄 License
 
-This project is licensed under the **MIT License**.
+This project is licensed under the **Apache 2.0 License**.

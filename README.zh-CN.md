@@ -6,7 +6,7 @@
 
 [English](./README.md) | 简体中文
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## 📖 项目简介
 
@@ -105,4 +105,4 @@ npx nx dev frontend
 
 ## 📄 许可证
 
-本项目基于 **MIT 许可证** 开源。
+本项目基于 **Apache 2.0 许可证** 开源。
