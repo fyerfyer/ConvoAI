@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6C3AED;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4F46E5;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A78BFA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#818CF8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FDE68A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F59E0B;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#6C3AED" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bgGrad)" filter="url(#shadow)"/>
+  
+  <!-- Inner glow ring -->
+  <rect x="56" y="56" width="400" height="400" rx="80" fill="none" stroke="url(#accentGrad)" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Chat bubble body (the main shape) -->
+  <path d="M 160 140 
+           C 160 126 171.2 114 184 114 
+           L 328 114 
+           C 340.8 114 352 126 352 140 
+           L 352 260 
+           C 352 274 340.8 286 328 286 
+           L 232 286 
+           L 192 330 
+           L 192 286 
+           L 184 286 
+           C 171.2 286 160 274 160 260 Z" 
+        fill="white" opacity="0.95"/>
+  
+  <!-- AI brain / neural dot pattern inside the bubble -->
+  <!-- Center node -->
+  <circle cx="256" cy="195" r="14" fill="url(#bgGrad)"/>
+  <!-- Top node -->
+  <circle cx="256" cy="150" r="8" fill="url(#accentGrad)"/>
+  <!-- Left node -->
+  <circle cx="210" cy="210" r="8" fill="url(#accentGrad)"/>
+  <!-- Right node -->
+  <circle cx="302" cy="210" r="8" fill="url(#accentGrad)"/>
+  <!-- Bottom-left node -->
+  <circle cx="225" cy="250" r="6" fill="url(#accentGrad)" opacity="0.7"/>
+  <!-- Bottom-right node -->
+  <circle cx="287" cy="250" r="6" fill="url(#accentGrad)" opacity="0.7"/>
+  
+  <!-- Connection lines -->
+  <line x1="256" y1="150" x2="256" y2="181" stroke="url(#bgGrad)" stroke-width="2.5" opacity="0.5"/>
+  <line x1="210" y1="210" x2="242" y2="195" stroke="url(#bgGrad)" stroke-width="2.5" opacity="0.5"/>
+  <line x1="302" y1="210" x2="270" y2="195" stroke="url(#bgGrad)" stroke-width="2.5" opacity="0.5"/>
+  <line x1="225" y1="250" x2="210" y2="218" stroke="url(#bgGrad)" stroke-width="2" opacity="0.3"/>
+  <line x1="287" y1="250" x2="302" y2="218" stroke="url(#bgGrad)" stroke-width="2" opacity="0.3"/>
+  <line x1="225" y1="250" x2="256" y2="209" stroke="url(#bgGrad)" stroke-width="2" opacity="0.3"/>
+  <line x1="287" y1="250" x2="256" y2="209" stroke="url(#bgGrad)" stroke-width="2" opacity="0.3"/>
+  
+  <!-- AI sparkle / star accent (top right) -->
+  <g transform="translate(340, 130)">
+    <path d="M 0 -16 L 4 -4 L 16 0 L 4 4 L 0 16 L -4 4 L -16 0 L -4 -4 Z" fill="url(#sparkGrad)"/>
+  </g>
+  <g transform="translate(360, 108)">
+    <path d="M 0 -8 L 2 -2 L 8 0 L 2 2 L 0 8 L -2 2 L -8 0 L -2 -2 Z" fill="url(#sparkGrad)" opacity="0.7"/>
+  </g>
+  
+  <!-- Text: ConvoAI -->
+  <text x="256" y="395" text-anchor="middle" font-family="'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif" font-weight="800" font-size="58" fill="white" letter-spacing="-1">
+    Convo<tspan fill="url(#sparkGrad)">AI</tspan>
+  </text>
+  
+  <!-- Subtitle -->
+  <text x="256" y="425" text-anchor="middle" font-family="'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif" font-weight="400" font-size="16" fill="white" opacity="0.6" letter-spacing="4">
+    INTELLIGENT CHAT
+  </text>
+</svg>

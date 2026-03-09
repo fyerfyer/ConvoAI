@@ -1,96 +1,108 @@
-# DiscordPlatform
+<div align="center">
+  <img src="./assets/logo.svg" width="120" alt="ConvoAI Logo" />
+  <h1>ConvoAI</h1>
+  <p>AI-Native Real-Time Communication Platform — not just another chat app.</p>
+</div>
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+English | [简体中文](./README.zh-CN.md)
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/getting-started/intro#learn-nx?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+## 📖 Introduction
 
-## Run tasks
+**ConvoAI** is a full-stack, AI-first communication platform built with a Discord-like interface. Unlike traditional chat applications, every server (guild) can be augmented with **intelligent AI Agents** — bots that don't just respond to commands, but _understand context, remember conversations, use tools, and take proactive actions_.
 
-To run tasks with Nx use:
+The platform combines real-time messaging, voice channels, media sharing, and content moderation into a single deployable stack — all orchestrated by a powerful **Agent runtime**.
 
-```sh
-npx nx <target> <project-name>
+## ✨ Key Features
+
+- **Core Chat & Voice**: Real-time messaging (Socket.IO adapter) and crystal-clear voice channels powered by LiveKit WebRTC.
+- **Agent Orchestration**: Multi-mode bot execution (Webhook, Built-in templates, and Managed LLM) supporting slash commands, scheduled tasks, and event-driven automation.
+- **Layered Memory System**: Per-bot long-term memory backed by rolling summaries, entity extraction, and semantic search (RAG) using Qdrant.
+- **On-Device AutoMod**: Local ONNX-based toxicity detection and spam filtering — zero API latency, complete privacy.
+- **Smart Tool Calling**: Agents can search the web, execute code, fetch guild info, and summarize channels autonomously.
+- **Scalable Media Storage**: S3-compatible object storage via MinIO.
+- **Full-Stack Monorepo**: NestJS backend and Next.js frontend, easily deployable via Docker Compose.
+
+## 🤖 Agent & Memory Architecture
+
+The heart of ConvoAI is its autonomous Agent runtime and Context Engine. Each bot can be customized to act as an orchestrator, responder, or background worker.
+
+### Execution Modes
+
+| Mode              | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| **`webhook`**     | Forwards events to external backend services.         |
+| **`builtin`**     | Zero-config templates (e.g., responder, game, poll).  |
+| **`managed_llm`** | Full LLM Agent with streaming, RAG, and tool calling. |
+
+### Context Pipeline & Memory
+
+When a user interacts with an Agent, the **Context Builder** assembles a layered prompt:
+
+1. **Rolling Summary**: Compressed historical context to save tokens.
+2. **User Entities**: Extracted personal facts and preferences (e.g., "Alice likes Python").
+3. **RAG Context**: Vector-searched past conversations from **Qdrant**.
+4. **Current Environment**: Guild, channel state, and real-time user messages.
+
+Tasks like memory updates, summarization, and vector embeddings are dispatched asynchronously via **BullMQ** message queues backed by **Redis**, ensuring zero impact on user interaction responsiveness.
+
+## 🏗️ Architecture & Tech Stack
+
+ConvoAI is built on a modern, scalable stack:
+
+| Layer               | Technology                                            |
+| ------------------- | ----------------------------------------------------- |
+| **Frontend**        | React 19 + Next.js 16 + TailwindCSS + Zustand         |
+| **Backend**         | NestJS 11 + Socket.IO                                 |
+| **Database**        | MongoDB 7 (Replica Set)                               |
+| **Object Storage**  | MinIO (S3-compatible)                                 |
+| **Cache & Queue**   | Redis + BullMQ (powers async memory & agent dispatch) |
+| **Vector Database** | Qdrant (semantic search & RAG)                        |
+| **Voice / WebRTC**  | LiveKit                                               |
+| **AI / ML**         | ONNX Runtime (AutoMod) + OpenAI-compatible LLM APIs   |
+
+## 🚀 Quick Start
+
+The easiest way to get ConvoAI running is using Docker. Ensure you have Docker and Docker Compose installed.
+
+```bash
+# Clone the repository
+git clone https://github.com/fyerfyer/convo-ai.git
+cd convo-ai
+
+# Start all services in the background
+docker compose up -d
 ```
 
-For example:
+Once all containers are up and healthy, you can access the application at `http://localhost:3000`.
 
-```sh
-npx nx build myproject
+_(Optional)_ To use full AI capabilities, configure your LLM settings in a `.env` file first (see `.env.example`).
+
+## 🛠️ Local Development
+
+If you wish to run the project locally without Docker (e.g., for development):
+
+### 1. Start Infrastructure Dependencies
+
+Run the infrastructure services (MongoDB, MinIO, Redis, Qdrant, LiveKit) via Docker Compose:
+
+```bash
+docker compose up mongo redis minio qdrant livekit -d
 ```
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+### 2. Start Services
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+```bash
+npm install
 
-## Add new projects
+# Start the backend in dev mode
+npx nx serve backend
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
-
-To install a new plugin you can use the `nx add` command. Here's an example of adding the React plugin:
-```sh
-npx nx add @nx/react
+# Start the frontend in dev mode (in another terminal)
+npx nx dev frontend
 ```
 
-Use the plugin's generator to create new projects. For example, to create a new React app or library:
+## 📄 License
 
-```sh
-# Generate an app
-npx nx g @nx/react:app demo
-
-# Generate a library
-npx nx g @nx/react:lib some-lib
-```
-
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
-
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Set up CI!
-
-### Step 1
-
-To connect to Nx Cloud, run the following command:
-
-```sh
-npx nx connect
-```
-
-Connecting to Nx Cloud ensures a [fast and scalable CI](https://nx.dev/ci/intro/why-nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
-
-- [Remote caching](https://nx.dev/ci/features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/ci/features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/ci/features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/ci/features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-### Step 2
-
-Use the following command to configure a CI workflow for your workspace:
-
-```sh
-npx nx g ci-workflow
-```
-
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/getting-started/intro#learn-nx?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+This project is licensed under the **MIT License**.
