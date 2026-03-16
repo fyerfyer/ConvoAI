@@ -69,8 +69,6 @@ export interface BotStreamStartPayload {
   streamId: string;
 }
 
-// ── Template Bot 配置接口 ──
-
 export interface WelcomeTemplateConfig {
   welcomeMessage: string;
   showMemberCount?: boolean;
@@ -122,8 +120,6 @@ export interface LlmConfig {
   customBaseUrl?: string; // provider='custom' 时使用
 }
 
-// ── 模板元信息（前端展示用）──
-
 export interface TemplateInfo {
   id: TemplateIdValue;
   name: string;
@@ -143,8 +139,6 @@ export interface TemplateConfigFieldSchema {
   max?: number;
 }
 
-// ── Memory 上下文（传递给 Runner 使用的记忆数据）──
-
 export interface MemoryContext {
   // 滚动摘要（压缩的历史对话）
   rollingSummary: string;
@@ -158,7 +152,6 @@ export interface MemoryContext {
   ragContext?: RagContextEntry[];
 }
 
-// ── User Knowledge (per-user memory) ──
 export interface UserKnowledgeEntry {
   fact: string;
   entityType: string;
@@ -168,7 +161,6 @@ export interface UserKnowledgeEntry {
   expiresAt?: string;
 }
 
-// ── RAG Context Entry (from vector search) ──
 export interface RagContextEntry {
   content: string;
   score: number;
@@ -176,7 +168,6 @@ export interface RagContextEntry {
   timestamp: string;
 }
 
-// ── Unread Tracking ──
 export interface UnreadInfo {
   channelId: string;
   count: number;
@@ -192,7 +183,6 @@ export interface UnreadUpdatePayload {
   lastMessageAt: string;
 }
 
-// ── Memory Job Payloads ──
 export interface SummarizeJobPayload {
   botId: string;
   channelId: string;
@@ -217,8 +207,6 @@ export interface EmbedConversationJobPayload {
   messages: AgentContextMessage[];
 }
 
-// ── Bot 执行上下文（传递给 Runner 的统一结构）──
-
 export interface BotExecutionContext {
   botId: string;
   botUserId: string;
@@ -240,6 +228,8 @@ export interface BotExecutionContext {
   overrideTools?: LlmToolValue[];
   memoryScope?: MemoryScopeValue;
   memory?: MemoryContext;
+  // 频道级权限策略（来自 ChannelBot binding）
+  policy?: ChannelBotPolicy;
   // 触发上下文（slash command / schedule / event）
   trigger?: TriggerContext;
 }

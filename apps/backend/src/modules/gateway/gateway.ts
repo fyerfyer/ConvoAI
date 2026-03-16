@@ -83,6 +83,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleDisconnect(socket: Socket) {
     const user: JwtPayload = socket.data.user;
     if (user) {
+      await this.sessionManager.cleanupSocketPresence(user.sub, socket.id);
       await this.sessionManager.removeUserSocket(user.sub, socket.id);
     }
   }
@@ -103,6 +104,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       );
     }
     await client.join(roomId);
+    const user: JwtPayload = client.data.user;
+    await this.sessionManager.joinChannelPresence(roomId, user.sub, client.id);
     return {
       event: SOCKET_EVENT.JOIN_ROOM,
       data: roomId,
@@ -115,6 +118,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() roomId: string,
   ) {
+    const user: JwtPayload = client.data.user;
+    await this.sessionManager.leaveChannelPresence(roomId, user.sub, client.id);
     await client.leave(roomId);
     return {
       event: SOCKET_EVENT.LEAVE_ROOM,

@@ -53,4 +53,61 @@ export class GatewaySessionManager {
   async getOnlineUsers() {
     return this.redisClient.smembers(RedisKeys.globalOnlineUser());
   }
+
+  async joinChannelPresence(
+    channelId: string,
+    userId: string,
+    socketId: string,
+  ): Promise<void> {
+    const pipeline = this.redisClient.pipeline();
+    pipeline.hincrby(RedisKeys.channelPresence(channelId), userId, 1);
+    pipeline.sadd(RedisKeys.socketChannels(socketId), channelId);
+    pipeline.expire(
+      RedisKeys.socketChannels(socketId),
+      CACHE_TTL.CHANNEL_PRESENCE,
+    );
+    await pipeline.exec();
+  }
+
+  async leaveChannelPresence(
+    channelId: string,
+    userId: string,
+    socketId: string,
+  ): Promise<void> {
+    await this.redisClient.srem(RedisKeys.socketChannels(socketId), channelId);
+    // Lua 脚本原子执行：HINCRBY -1，若 ≤0 则 HDEL，避免竞态
+    await this.redisClient.eval(
+      `local c = redis.call('HINCRBY', KEYS[1], ARGV[1], -1)
+       if c <= 0 then redis.call('HDEL', KEYS[1], ARGV[1]) end
+       return c`,
+      1,
+      RedisKeys.channelPresence(channelId),
+      userId,
+    );
+  }
+
+  async cleanupSocketPresence(userId: string, socketId: string): Promise<void> {
+    const key = RedisKeys.socketChannels(socketId);
+    const channels = await this.redisClient.smembers(key);
+    if (channels.length > 0) {
+      const pipeline = this.redisClient.pipeline();
+      for (const channelId of channels) {
+        // 同一个 Lua 脚本，原子递减
+        pipeline.eval(
+          `local c = redis.call('HINCRBY', KEYS[1], ARGV[1], -1)
+           if c <= 0 then redis.call('HDEL', KEYS[1], ARGV[1]) end
+           return c`,
+          1,
+          RedisKeys.channelPresence(channelId),
+          userId,
+        );
+      }
+      await pipeline.exec();
+    }
+    await this.redisClient.del(key);
+  }
+
+  async getChannelPresenceUserIds(channelId: string): Promise<string[]> {
+    return this.redisClient.hkeys(RedisKeys.channelPresence(channelId));
+  }
 }

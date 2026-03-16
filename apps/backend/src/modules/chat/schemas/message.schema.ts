@@ -43,6 +43,10 @@ export class Message {
   @Prop({ type: Boolean, default: false })
   pinned: boolean;
 
+  // 消息中被 @mention 的用户 ID 列表（标准 mention 协议）
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
+  mentions: Types.ObjectId[];
+
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
   pinnedBy?: PopulatedDoc<UserDocument & Document>;
 

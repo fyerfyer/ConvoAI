@@ -116,11 +116,15 @@ export class MemoryService {
     // RAG
     if (query) {
       try {
+        // Channel scope → 频道隔离检索（只搜索当前 channel 的向量）
+        // 其他 scope → guild 全局共享检索
+        const ragChannelId =
+          memoryScope === MEMORY_SCOPE.CHANNEL ? channelId : undefined;
         const ragResults = await this.ragService.searchRelevantContext(
           query,
           botId,
           guildId,
-          undefined,
+          ragChannelId,
           MEMORY_DEFAULTS.RAG_TOP_K,
         );
         if (ragResults.length > 0) {
@@ -144,6 +148,7 @@ export class MemoryService {
   }
 
   // 交互后通过 BullMQ 异步更新记忆
+  // canSummarize: 由 ChannelBot policy 控制，false 时跳过摘要、实体提取和 RAG 入库
   async updateMemoryAfterInteraction(
     botId: string,
     channelId: string,
@@ -152,8 +157,17 @@ export class MemoryService {
     memoryScope: MemoryScopeValue = MEMORY_SCOPE.CHANNEL,
     userId?: string,
     userName?: string,
+    canSummarize = true,
   ): Promise<void> {
     if (memoryScope === MEMORY_SCOPE.EPHEMERAL) return;
+
+    // Policy 治理：canSummarize 为 false 时跳过所有记忆持久化
+    if (!canSummarize) {
+      this.logger.log(
+        `[MemoryService] canSummarize=false for bot=${botId} channel=${channelId} — skipping memory persistence`,
+      );
+      return;
+    }
 
     this.logger.log(
       `[MemoryService] Updating memory after interaction — bot=${botId} channel=${channelId} user=${userId ?? 'n/a'}`,

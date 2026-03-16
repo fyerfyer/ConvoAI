@@ -34,6 +34,16 @@ export class RedisKeys {
     return 'global_online_users';
   }
 
+  // 频道在线状态：Hash field=userId, value=socket引用计数
+  static channelPresence(channelId: string): string {
+    return `channel_presence:${channelId}`;
+  }
+
+  // 单个 socket 加入的所有频道，用于 disconnect 时清理
+  static socketChannels(socketId: string): string {
+    return `socket_channels:${socketId}`;
+  }
+
   // AutoMod
   // 记录用户在某频道的近期消息，用于检测重复刷屏
   static automodSpam(
@@ -69,4 +79,6 @@ export const CACHE_TTL = {
   AUTOMOD_SPAM: 30,
   // 未读消息过期时间 (30天)
   UNREAD: 30 * 24 * 60 * 60,
+  // 频道在线状态过期时间 (与 socket 一致)
+  CHANNEL_PRESENCE: 86400,
 } as const;

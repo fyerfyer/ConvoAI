@@ -23,6 +23,9 @@ import {
 } from '@discord-platform/shared';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 
+// 标准 mention 格式：<@userId>
+const MENTION_PATTERN = /<@([a-f0-9]{24})>/gi;
+
 @Injectable()
 export class BotOrchestratorService {
   constructor(
@@ -51,7 +54,8 @@ export class BotOrchestratorService {
 
       const content = message.content || '';
       const isSlashCommand = content.startsWith('/');
-      const hasMention = content.includes('@');
+      // 支持标准 mention <@userId> 和旧式 @Name
+      const hasMention = content.includes('@') || MENTION_PATTERN.test(content);
 
       this.logger.log(
         `[BotOrchestrator] Message ${message._id} from user ${senderId}: isSlashCommand=${isSlashCommand}, hasMention=${hasMention}, content="${content.slice(0, 80)}"`,
@@ -138,10 +142,16 @@ export class BotOrchestratorService {
 
       if (!hasMention) return;
 
+      // 解析标准 mention: <@userId> 格式
+      const mentionedUserIds = this.parseMentionIds(content);
       const contentLower = content.toLowerCase();
 
+      // 优先按 userId 匹配（标准 mention 协议），退而使用 @Name 匹配（向后兼容）
       const mentionedChannelBots = validChannelBots.filter(({ bot }) => {
         const user = bot.userId as unknown as UserDocument;
+        const userId = user?._id?.toString();
+        if (userId && mentionedUserIds.has(userId)) return true;
+        // 回退: @Name 匹配
         const botName = user?.name;
         if (!botName) return false;
         return contentLower.includes(`@${botName.toLowerCase()}`);
@@ -149,6 +159,9 @@ export class BotOrchestratorService {
 
       const mentionedGuildBots = guildScopeBots.filter((bot) => {
         const user = bot.userId as unknown as UserDocument;
+        const userId = user?._id?.toString();
+        if (userId && mentionedUserIds.has(userId)) return true;
+        // 回退: @Name 匹配
         const botName = user?.name;
         if (!botName) return false;
         return contentLower.includes(`@${botName.toLowerCase()}`);
@@ -225,6 +238,13 @@ export class BotOrchestratorService {
           overrideTools: binding.overrideTools as LlmToolValue[] | undefined,
           memoryScope,
           memory,
+          policy: binding.policy
+            ? {
+                canSummarize: binding.policy.canSummarize ?? true,
+                canUseTools: binding.policy.canUseTools ?? true,
+                maxTokensPerRequest: binding.policy.maxTokensPerRequest ?? 2048,
+              }
+            : undefined,
           trigger: { type: BOT_TRIGGER_TYPE.MENTION },
         };
 
@@ -412,6 +432,13 @@ export class BotOrchestratorService {
             : (binding.overrideTools as LlmToolValue[] | undefined),
         memoryScope,
         memory,
+        policy: binding.policy
+          ? {
+              canSummarize: binding.policy.canSummarize ?? true,
+              canUseTools: binding.policy.canUseTools ?? true,
+              maxTokensPerRequest: binding.policy.maxTokensPerRequest ?? 2048,
+            }
+          : undefined,
         trigger: {
           type: BOT_TRIGGER_TYPE.SLASH_COMMAND,
           slashCommand: {
@@ -576,9 +603,24 @@ export class BotOrchestratorService {
   }
 
   private stripMention(content: string, botName: string): string {
+    // 先去除标准 mention 格式 <@userId>
+    let cleaned = content.replace(MENTION_PATTERN, '');
+    // 再去除 @Name 格式（向后兼容）
     const escaped = botName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`@${escaped}\\b`, 'gi');
-    return content.replace(regex, '').trim();
+    cleaned = cleaned.replace(regex, '');
+    return cleaned.trim();
+  }
+
+  // 从消息内容中解析标准 mention: <@userId> 格式
+  private parseMentionIds(content: string): Set<string> {
+    const ids = new Set<string>();
+    let match: RegExpExecArray | null;
+    const pattern = new RegExp(MENTION_PATTERN.source, 'gi');
+    while ((match = pattern.exec(content)) !== null) {
+      ids.add(match[1]);
+    }
+    return ids;
   }
 
   private async buildContext(

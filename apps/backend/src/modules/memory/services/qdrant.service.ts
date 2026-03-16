@@ -151,6 +151,9 @@ export class QdrantService implements OnModuleInit {
       if (filters.guildId) {
         must.push({ key: 'guildId', match: { value: filters.guildId } });
       }
+      if (filters.channelId) {
+        must.push({ key: 'channelId', match: { value: filters.channelId } });
+      }
 
       const results = await this.client.search(this.collectionName, {
         vector,

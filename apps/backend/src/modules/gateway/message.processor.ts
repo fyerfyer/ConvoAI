@@ -9,6 +9,7 @@ import { BotOrchestratorService } from '../bot/bot-orchestrator.service';
 import { UnreadService } from '../unread/unread.service';
 import { MemberService } from '../member/member.service';
 import { ChatGateway } from './gateway';
+import { GatewaySessionManager } from './gateway.session';
 import { AppLogger } from '../../common/configs/logger/logger.service';
 import { Inject, forwardRef, OnModuleInit } from '@nestjs/common';
 import { SOCKET_EVENT } from '@discord-platform/shared';
@@ -30,6 +31,7 @@ export class MessageProcessor extends WorkerHost implements OnModuleInit {
     private readonly botOrchestrator: BotOrchestratorService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
+    private readonly sessionManager: GatewaySessionManager,
     private readonly unreadService: UnreadService,
     private readonly memberService: MemberService,
     private readonly channelService: ChannelService,
@@ -92,14 +94,9 @@ export class MessageProcessor extends WorkerHost implements OnModuleInit {
         const members = await this.memberService.getGuildMembers(guildId);
         const memberUserIds = members.map((m) => String(m.user?._id || m.user));
 
-        // 获取最近访问 socket 的成员
-        const socketsInRoom = await this.gateway.server
-          .in(roomId)
-          .fetchSockets();
+        // 通过 Redis 频道在线状态查询
         const userIdsInRoom = new Set(
-          socketsInRoom
-            .map((s) => (s.data as { user?: { sub?: string } }).user?.sub)
-            .filter(Boolean),
+          await this.sessionManager.getChannelPresenceUserIds(roomId),
         );
 
         const usersToIncrement = memberUserIds.filter(

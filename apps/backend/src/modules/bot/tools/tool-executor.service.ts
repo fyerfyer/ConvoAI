@@ -196,7 +196,6 @@ export class ToolExecutorService {
     }
   }
 
-  // TODO：这个东西有点问题，之后重写一下
   private async toolWebSearch(query: string): Promise<string> {
     try {
       const response = await this.httpService.axiosRef.get(
@@ -210,29 +209,90 @@ export class ToolExecutorService {
       const data = response.data;
       const results: string[] = [];
 
-      if (data.AbstractText) {
-        results.push(`**Summary:** ${data.AbstractText}`);
-        if (data.AbstractSource) results.push(`Source: ${data.AbstractSource}`);
+      // 直接回答
+      if (data.Answer) {
+        results.push(`**Answer:** ${data.Answer}`);
       }
 
+      // 摘要（Wikipedia 等来源）
+      if (data.AbstractText) {
+        results.push(`**Summary:** ${data.AbstractText}`);
+        if (data.AbstractSource && data.AbstractURL) {
+          results.push(`Source: ${data.AbstractSource} (${data.AbstractURL})`);
+        } else if (data.AbstractSource) {
+          results.push(`Source: ${data.AbstractSource}`);
+        }
+      }
+
+      // 词典定义
+      if (data.Definition) {
+        results.push(`**Definition:** ${data.Definition}`);
+        if (data.DefinitionSource) {
+          results.push(`Source: ${data.DefinitionSource}`);
+        }
+      }
+
+      // Redirect (即时跳转)
+      if (data.Redirect) {
+        results.push(`**Redirect:** ${data.Redirect}`);
+      }
+
+      // 相关主题（展开嵌套分组，提取更多结果）
       if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-        const topics = data.RelatedTopics.slice(0, 5)
-          .filter((t: Record<string, unknown>) => t.Text)
-          .map((t: Record<string, unknown>) => `- ${t.Text}`);
-        if (topics.length > 0)
+        const flatTopics: Array<{ Text: string; FirstURL?: string }> = [];
+        for (const item of data.RelatedTopics) {
+          if (item.Text) {
+            flatTopics.push(item);
+          } else if (item.Topics && Array.isArray(item.Topics)) {
+            // 嵌套分组：DuckDuckGo 会将相关主题分组
+            for (const sub of item.Topics) {
+              if (sub.Text) flatTopics.push(sub);
+            }
+          }
+        }
+        const topics = flatTopics.slice(0, 8).map((t) => {
+          const url = t.FirstURL ? ` (${t.FirstURL})` : '';
+          return `- ${t.Text}${url}`;
+        });
+        if (topics.length > 0) {
           results.push(`\n**Related:**\n${topics.join('\n')}`);
+        }
+      }
+
+      // Infobox（结构化数据）
+      if (data.Infobox?.content && Array.isArray(data.Infobox.content)) {
+        const infoItems = data.Infobox.content
+          .slice(0, 5)
+          .filter((item: Record<string, unknown>) => item.label && item.value)
+          .map(
+            (item: Record<string, unknown>) =>
+              `- **${item.label}**: ${item.value}`,
+          );
+        if (infoItems.length > 0) {
+          results.push(`\n**Details:**\n${infoItems.join('\n')}`);
+        }
       }
 
       if (results.length === 0) {
         return JSON.stringify({
           result: `No instant results found for "${query}". Answer based on your training data.`,
+          source: 'duckduckgo',
+          note: 'Instant answer API returned no results. Tool system is extensible — can be upgraded to a full search service.',
         });
       }
 
-      return JSON.stringify({ result: results.join('\n') });
-    } catch {
       return JSON.stringify({
-        result: `Web search for "${query}" is temporarily unavailable.`,
+        result: results.join('\n'),
+        source: 'duckduckgo',
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.logger.warn(
+        `[ToolExecutor] Web search failed for "${query}": ${error.message}`,
+      );
+      return JSON.stringify({
+        result: `Web search for "${query}" is temporarily unavailable. Answer based on your training data.`,
+        error: error.message,
       });
     }
   }

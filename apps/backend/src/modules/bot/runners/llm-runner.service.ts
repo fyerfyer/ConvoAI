@@ -57,7 +57,7 @@ export class LlmRunner {
         ctx.channelId,
         "⚠️ AI Agent haven't been configured yet. Please set up the LLM configuration for this bot.",
       );
-      // Emit streamEnd to clear the "Thinking..." indicator
+
       await this.botStreamProducer.emitStreamEnd({
         botId: ctx.botId,
         channelId: ctx.channelId,
@@ -71,15 +71,25 @@ export class LlmRunner {
       const apiKey = this.decryptApiKey(llmConfig.apiKey);
       const baseUrl = this.resolveBaseUrl(llmConfig);
 
+      // 从 ChannelBot 绑定注入的策略
+      const policy = ctx.policy;
+
       // 使用 ContextBuilder 组装完整的消息序列
       const messages = this.contextBuilder.buildMessages(llmConfig, ctx);
 
-      // Channel 覆写
-      const toolNames = ctx.overrideTools ?? llmConfig.tools;
+      // Channel 覆写 + policy 裁剪
+      let toolNames = ctx.overrideTools ?? llmConfig.tools;
+      if (policy?.canUseTools === false) {
+        toolNames = [];
+      }
       const tools = this.toolExecutor.resolveTools(toolNames);
 
+      // Policy 覆写 maxTokens
+      const effectiveMaxTokens =
+        policy?.maxTokensPerRequest ?? llmConfig.maxTokens ?? 1024;
+
       this.logger.debug(
-        `[LlmRunner] Calling ${llmConfig.provider}/${llmConfig.model} for bot ${ctx.botId} (tools: ${tools.length}, messages: ${messages.length}, baseUrl: ${baseUrl}, memory: ${ctx.memory?.rollingSummary ? 'yes' : 'no'})`,
+        `[LlmRunner] Calling ${llmConfig.provider}/${llmConfig.model} for bot ${ctx.botId} (tools: ${tools.length}, messages: ${messages.length}, baseUrl: ${baseUrl}, memory: ${ctx.memory?.rollingSummary ? 'yes' : 'no'}, maxTokens: ${effectiveMaxTokens}, canUseTools: ${policy?.canUseTools ?? true})`,
       );
 
       if (tools.length > 0) {
@@ -91,10 +101,19 @@ export class LlmRunner {
           llmConfig,
           messages,
           tools,
+          effectiveMaxTokens,
         );
       } else {
         // 流式请求
-        await this.streamChat(bot, ctx, baseUrl, apiKey, llmConfig, messages);
+        await this.streamChat(
+          bot,
+          ctx,
+          baseUrl,
+          apiKey,
+          llmConfig,
+          messages,
+          effectiveMaxTokens,
+        );
       }
 
       // 交互完成后异步更新记忆
@@ -139,8 +158,10 @@ export class LlmRunner {
     config: LlmConfigEmbedded,
     messages: ChatMessage[],
     tools: OpenAITool[],
+    effectiveMaxTokens?: number,
   ): Promise<void> {
     const conversationMessages = [...messages];
+    const maxTokens = effectiveMaxTokens ?? config.maxTokens ?? 1024;
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
       const response = await this.httpService.axiosRef.post(
@@ -149,7 +170,7 @@ export class LlmRunner {
           model: config.model,
           messages: conversationMessages,
           temperature: config.temperature ?? 0.7,
-          max_tokens: config.maxTokens ?? 1024,
+          max_tokens: maxTokens,
           tools,
           tool_choice: 'auto',
           stream: false,
@@ -241,6 +262,9 @@ export class LlmRunner {
     const memoryScope = ctx.memoryScope ?? MEMORY_SCOPE.CHANNEL;
     if (memoryScope === MEMORY_SCOPE.EPHEMERAL) return;
 
+    // Policy:canSummarize 控制是否持久化记忆（摘要、实体、RAG）
+    const canSummarize = ctx.policy?.canSummarize ?? true;
+
     this.memoryService
       .updateMemoryAfterInteraction(
         ctx.botId,
@@ -250,6 +274,7 @@ export class LlmRunner {
         memoryScope,
         ctx.author.id,
         ctx.author.name,
+        canSummarize,
       )
       .catch((err) => {
         this.logger.error(
@@ -266,8 +291,10 @@ export class LlmRunner {
     apiKey: string,
     config: LlmConfigEmbedded,
     messages: ChatMessage[],
+    effectiveMaxTokens?: number,
   ): Promise<void> {
     let accumulatedContent = '';
+    const maxTokens = effectiveMaxTokens ?? config.maxTokens ?? 1024;
 
     // 注意：BOT_STREAM_START 已经在 AgentRunner.dispatch 中发送过了，
     // 不再重复发送，避免前端出现多余的 "Thinking..."
@@ -279,7 +306,7 @@ export class LlmRunner {
           model: config.model,
           messages,
           temperature: config.temperature ?? 0.7,
-          max_tokens: config.maxTokens ?? 1024,
+          max_tokens: maxTokens,
           stream: true,
         },
         {
@@ -317,7 +344,15 @@ export class LlmRunner {
       this.logger.warn(
         `[LlmRunner] Streaming failed for bot ${ctx.botId}, falling back to non-streaming`,
       );
-      await this.nonStreamChat(bot, ctx, baseUrl, apiKey, config, messages);
+      await this.nonStreamChat(
+        bot,
+        ctx,
+        baseUrl,
+        apiKey,
+        config,
+        messages,
+        maxTokens,
+      );
     }
   }
 
@@ -398,14 +433,16 @@ export class LlmRunner {
     apiKey: string,
     config: LlmConfigEmbedded,
     messages: ChatMessage[],
+    effectiveMaxTokens?: number,
   ): Promise<void> {
+    const maxTokens = effectiveMaxTokens ?? config.maxTokens ?? 1024;
     const response = await this.httpService.axiosRef.post(
       `${baseUrl}/chat/completions`,
       {
         model: config.model,
         messages,
         temperature: config.temperature ?? 0.7,
-        max_tokens: config.maxTokens ?? 1024,
+        max_tokens: maxTokens,
         stream: false,
       },
       {
